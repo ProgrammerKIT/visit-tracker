@@ -129,20 +129,74 @@
     background:var(--ink);color:#fff;font-size:14px;padding:10px 18px;z-index:30;
     display:none;
   }
+
+  .tabs{display:flex;border-bottom:2px solid var(--line);margin-bottom:16px;}
+  .tabs button{
+    flex:1;padding:12px 0;font-size:15px;font-weight:600;background:none;border:none;
+    color:var(--sub);font-family:inherit;cursor:pointer;border-bottom:3px solid transparent;
+    margin-bottom:-2px;
+  }
+  .tabs button.on{color:var(--alcon);border-bottom-color:var(--alcon);}
+  .pane{display:none;}
+  .pane.on{display:block;}
+
+  .quickform{border:1px solid var(--line);padding:12px;margin-bottom:16px;background:var(--panel);}
+  .note-item,.todo-item{
+    border:1px solid var(--line);padding:11px 12px;margin-bottom:8px;background:#fff;font-size:14px;
+  }
+  .note-item .n-meta{font-size:12px;color:var(--sub);margin-bottom:4px;}
+  .n-store{color:var(--alcon);font-weight:700;}
+  .item-del{
+    float:right;border:1px solid var(--line);background:#fff;color:var(--sub);
+    font-size:12px;padding:3px 10px;font-family:inherit;cursor:pointer;
+  }
+  .todo-item{display:flex;gap:10px;align-items:flex-start;}
+  .todo-item input[type=checkbox]{width:22px;height:22px;margin-top:1px;flex-shrink:0;accent-color:var(--alcon);}
+  .todo-item .t-text{flex:1;}
+  .todo-item.done .t-text{color:var(--sub);text-decoration:line-through;}
+  .t-due{font-size:12px;color:var(--alert);font-weight:600;margin-top:2px;}
+  .todo-item.done .t-due{color:var(--sub);}
+  .sec-label{font-size:13px;color:var(--sub);font-weight:700;letter-spacing:1px;margin:14px 0 8px;}
 </style>
 </head>
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>大樹通路 · 重點警示店專用 · 現場輸入 · v1.2</p>
+  <p>大樹通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.3</p>
 </header>
 
 <div class="wrap">
-  <div class="toolbar">
-    <button class="btn primary" onclick="openAddStore()">＋ 新增警示店</button>
-    <button class="btn" onclick="openReport()">產出回報文字</button>
+  <div class="tabs">
+    <button id="tab-stores" class="on" onclick="switchTab('stores')">警示店</button>
+    <button id="tab-notes" onclick="switchTab('notes')">隨手記</button>
+    <button id="tab-todos" onclick="switchTab('todos')">追蹤待辦</button>
   </div>
-  <div id="storeList"></div>
+
+  <div class="pane on" id="pane-stores">
+    <div class="toolbar">
+      <button class="btn primary" onclick="openAddStore()">＋ 新增警示店</button>
+      <button class="btn" onclick="openReport()">產出回報文字</button>
+    </div>
+    <div id="storeList"></div>
+  </div>
+
+  <div class="pane" id="pane-notes">
+    <div class="quickform">
+      <div class="field"><label>想法 / 觀察 / 情報</label><textarea id="qn-text" placeholder="例:新莊店藥師說最近Complete帶動人工淚液詢問變多"></textarea></div>
+      <div class="field"><label>相關門市(選填)</label><input type="text" id="qn-store" placeholder="例:新莊店,可留空"></div>
+      <button class="btn primary" style="width:100%" onclick="saveNote()">存入隨手記</button>
+    </div>
+    <div id="noteList"></div>
+  </div>
+
+  <div class="pane" id="pane-todos">
+    <div class="quickform">
+      <div class="field"><label>追蹤事項</label><input type="text" id="qt-text" placeholder="例:7月底前確認宜安補貨到位"></div>
+      <div class="field"><label>期限(選填)</label><input type="date" id="qt-due"></div>
+      <button class="btn primary" style="width:100%" onclick="saveTodo()">加入待辦</button>
+    </div>
+    <div id="todoList"></div>
+  </div>
 </div>
 
 <!-- 新增警示店 modal -->
@@ -176,8 +230,14 @@
 
 <script>
 const KEY='alert-visit-tracker-v1';
-let state={stores:[],visits:[]};
+let state={stores:[],visits:[],notes:[],todos:[]};
 let pendingStockout={};
+
+function migrate(s){
+  if(!s.notes)s.notes=[];
+  if(!s.todos)s.todos=[];
+  return s;
+}
 
 /* 雙模式儲存:Claude內用window.storage,Safari/桌面App用localStorage */
 const hasClaudeStorage=typeof window.storage!=='undefined'&&window.storage&&typeof window.storage.get==='function';
@@ -218,13 +278,13 @@ const SEED={
 async function load(){
   try{
     const v=await store.get();
-    if(v){state=JSON.parse(v);}
-    else{state=SEED;await persist();}
+    if(v){state=migrate(JSON.parse(v));}
+    else{state=migrate(SEED);await persist();}
   }catch(e){
-    state=SEED;
+    state=migrate(SEED);
     try{await persist();}catch(err){console.error(err);}
   }
-  render();
+  render();renderNotes();renderTodos();
 }
 async function persist(){
   const payload=JSON.stringify(state);
@@ -362,6 +422,81 @@ async function removeStore(id){
   state.visits=state.visits.filter(v=>v.storeId!==id);
   await persist();render();toast('已移除');
 }
+function switchTab(t){
+  ['stores','notes','todos'].forEach(x=>{
+    document.getElementById('tab-'+x).classList.toggle('on',x===t);
+    document.getElementById('pane-'+x).classList.toggle('on',x===t);
+  });
+}
+
+/* ---- 隨手記 ---- */
+function renderNotes(){
+  const el=document.getElementById('noteList');
+  const ns=[...state.notes].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!ns.length){el.innerHTML='<div class="empty">還沒有隨手記。想法、觀察、藥師情報都丟進來。</div>';return;}
+  el.innerHTML=ns.map(n=>
+    '<div class="note-item">'+
+    '<button class="item-del" onclick="deleteNote(\''+n.id+'\')">刪除</button>'+
+    '<div class="n-meta">'+esc(n.date)+(n.store?' · <span class="n-store">'+esc(n.store)+'</span>':'')+'</div>'+
+    esc(n.text)+'</div>').join('');
+}
+async function saveNote(){
+  const text=document.getElementById('qn-text').value.trim();
+  if(!text){toast('請輸入內容');return;}
+  state.notes.push({id:'n'+Date.now(),date:today(),text:text,
+    store:document.getElementById('qn-store').value.trim()});
+  await persist();
+  document.getElementById('qn-text').value='';
+  document.getElementById('qn-store').value='';
+  renderNotes();toast('已存入');
+}
+async function deleteNote(id){
+  if(!confirm('刪除這則隨手記?'))return;
+  state.notes=state.notes.filter(x=>x.id!==id);
+  await persist();renderNotes();toast('已刪除');
+}
+
+/* ---- 追蹤待辦 ---- */
+function renderTodos(){
+  const el=document.getElementById('todoList');
+  const open=state.todos.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+  const done=state.todos.filter(t=>t.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
+  if(!open.length&&!done.length){el.innerHTML='<div class="empty">還沒有追蹤事項。</div>';return;}
+  let h='';
+  if(open.length){h+='<div class="sec-label">進行中</div>'+open.map(t=>todoRow(t)).join('');}
+  if(done.length){h+='<div class="sec-label">已完成</div>'+done.map(t=>todoRow(t)).join('');}
+  el.innerHTML=h;
+}
+function todoRow(t){
+  return '<div class="todo-item'+(t.done?' done':'')+'">'+
+    '<input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleTodo(\''+t.id+'\')">'+
+    '<div class="t-text">'+esc(t.text)+
+    (t.due?'<div class="t-due">期限 '+esc(t.due)+'</div>':'')+'</div>'+
+    '<button class="item-del" onclick="deleteTodo(\''+t.id+'\')">刪除</button></div>';
+}
+async function saveTodo(){
+  const text=document.getElementById('qt-text').value.trim();
+  if(!text){toast('請輸入事項');return;}
+  state.todos.push({id:'t'+Date.now(),text:text,created:today(),
+    due:document.getElementById('qt-due').value||'',done:false,doneDate:''});
+  await persist();
+  document.getElementById('qt-text').value='';
+  document.getElementById('qt-due').value='';
+  renderTodos();toast('已加入');
+}
+async function toggleTodo(id){
+  const t=state.todos.find(x=>x.id===id);
+  if(!t)return;
+  t.done=!t.done;
+  t.doneDate=t.done?today():'';
+  await persist();renderTodos();
+}
+async function deleteTodo(id){
+  if(!confirm('刪除這個追蹤事項?'))return;
+  state.todos=state.todos.filter(x=>x.id!==id);
+  await persist();renderTodos();toast('已刪除');
+}
+
 function openReport(){
   let out='【警示店拜訪回報】產出日期:'+today()+'\n\n';
   state.stores.forEach(s=>{
@@ -377,6 +512,20 @@ function openReport(){
     });
     out+='\n';
   });
+  if(state.notes.length){
+    out+='【隨手記 / 現場情報】\n';
+    [...state.notes].sort((a,b)=>a.date.localeCompare(b.date)).forEach(n=>{
+      out+='- '+n.date+(n.store?' ['+n.store+']':'')+' '+n.text+'\n';
+    });
+    out+='\n';
+  }
+  const openT=state.todos.filter(t=>!t.done),doneT=state.todos.filter(t=>t.done);
+  if(openT.length||doneT.length){
+    out+='【追蹤待辦】\n';
+    openT.forEach(t=>{out+='- [未完成] '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
+    doneT.forEach(t=>{out+='- [已完成 '+t.doneDate+'] '+t.text+'\n';});
+    out+='\n';
+  }
   document.getElementById('reportText').value=out;
   document.getElementById('reportModal').classList.add('show');
 }
