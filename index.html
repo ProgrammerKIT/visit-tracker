@@ -238,6 +238,7 @@ function migrate(s){
   if(!s.notes)s.notes=[];
   if(!s.todos)s.todos=[];
   if(!s.channels||!s.channels.length)s.channels=['大樹'];
+  ['佑全','躍獅','其他'].forEach(c=>{if(!s.channels.includes(c))s.channels.push(c);});
   s.stores.forEach(st=>{if(!st.channel)st.channel='大樹';});
   return s;
 }
