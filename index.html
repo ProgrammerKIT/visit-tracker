@@ -162,7 +162,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.4</p>
+  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.5</p>
 </header>
 
 <div class="wrap">
@@ -218,6 +218,7 @@
 <div class="modal-bg" id="reportModal">
   <div class="modal">
     <h3>拜訪回報文字</h3>
+    <div class="field"><label>輸出範圍</label><select id="rp-channel" onchange="buildReport()"></select></div>
     <textarea class="report" id="reportText" readonly></textarea>
     <p class="hint">全選複製後,貼回Claude對話即可納入月度分析判讀。</p>
     <div class="row2">
@@ -520,9 +521,19 @@ async function deleteTodo(id){
 }
 
 function openReport(){
-  let out='【警示店拜訪回報】產出日期:'+today()+'\n\n';
+  const sel=document.getElementById('rp-channel');
+  sel.innerHTML='<option value="__all__">全部通路</option>'+
+    state.channels.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+  buildReport();
+  document.getElementById('reportModal').classList.add('show');
+}
+function buildReport(){
+  const pick=document.getElementById('rp-channel').value||'__all__';
+  const inScope=s=>pick==='__all__'||s.channel===pick;
+  const tag=pick==='__all__'?'全部通路':pick;
+  let out='【警示店拜訪回報 · '+tag+'】產出日期:'+today()+'\n\n';
   const byCh={};
-  state.stores.forEach(s=>{(byCh[s.channel]=byCh[s.channel]||[]).push(s);});
+  state.stores.filter(inScope).forEach(s=>{(byCh[s.channel]=byCh[s.channel]||[]).push(s);});
   Object.keys(byCh).sort().forEach(ch=>{
     out+='=== 通路:'+ch+' ===\n';
     byCh[ch].forEach(s=>{
@@ -539,22 +550,27 @@ function openReport(){
     out+='\n';
     });
   });
-  if(state.notes.length){
-    out+='【隨手記 / 現場情報】\n';
-    [...state.notes].sort((a,b)=>a.date.localeCompare(b.date)).forEach(n=>{
+  const noteScope=state.notes.filter(n=>{
+    if(pick==='__all__')return true;
+    if(!n.store)return true; /* 未標記通路的隨手記一律附上,避免漏情報 */
+    if(n.store.includes(pick))return true;
+    return state.stores.some(s=>s.channel===pick&&n.store.includes(s.name));
+  });
+  if(noteScope.length){
+    out+='【隨手記 / 現場情報】'+(pick!=='__all__'?'(含未標通路者)':'')+'\n';
+    [...noteScope].sort((a,b)=>a.date.localeCompare(b.date)).forEach(n=>{
       out+='- '+n.date+(n.store?' ['+n.store+']':'')+' '+n.text+'\n';
     });
     out+='\n';
   }
   const openT=state.todos.filter(t=>!t.done),doneT=state.todos.filter(t=>t.done);
   if(openT.length||doneT.length){
-    out+='【追蹤待辦】\n';
+    out+='【追蹤待辦】(全部)\n';
     openT.forEach(t=>{out+='- [未完成] '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
     doneT.forEach(t=>{out+='- [已完成 '+t.doneDate+'] '+t.text+'\n';});
     out+='\n';
   }
   document.getElementById('reportText').value=out;
-  document.getElementById('reportModal').classList.add('show');
 }
 function copyReport(){
   const ta=document.getElementById('reportText');
