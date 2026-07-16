@@ -162,7 +162,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>大樹通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.3</p>
+  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.4</p>
 </header>
 
 <div class="wrap">
@@ -183,7 +183,7 @@
   <div class="pane" id="pane-notes">
     <div class="quickform">
       <div class="field"><label>想法 / 觀察 / 情報</label><textarea id="qn-text" placeholder="例:新莊店藥師說最近Complete帶動人工淚液詢問變多"></textarea></div>
-      <div class="field"><label>相關門市(選填)</label><input type="text" id="qn-store" placeholder="例:新莊店,可留空"></div>
+      <div class="field"><label>相關通路/門市(選填)</label><input type="text" id="qn-store" placeholder="例:大樹-新莊店 或 佑全,可留空"></div>
       <button class="btn primary" style="width:100%" onclick="saveNote()">存入隨手記</button>
     </div>
     <div id="noteList"></div>
@@ -203,6 +203,7 @@
 <div class="modal-bg" id="addStoreModal">
   <div class="modal">
     <h3>新增警示店</h3>
+    <div class="field"><label>通路</label><select id="ns-channel"></select></div>
     <div class="field"><label>門市名稱</label><input type="text" id="ns-name" placeholder="例:板橋文化"></div>
     <div class="field"><label>警示原因(為什麼要去)</label><textarea id="ns-reason" placeholder="例:HAUD連三月下滑,A階段止血店"></textarea></div>
     <div class="field"><label>現場檢查點(一行一項)</label><textarea id="ns-cp" placeholder="例:&#10;架上HAUD剩幾盒&#10;確認陳列位置有無被換掉"></textarea></div>
@@ -236,6 +237,8 @@ let pendingStockout={};
 function migrate(s){
   if(!s.notes)s.notes=[];
   if(!s.todos)s.todos=[];
+  if(!s.channels||!s.channels.length)s.channels=['大樹'];
+  s.stores.forEach(st=>{if(!st.channel)st.channel='大樹';});
   return s;
 }
 
@@ -263,6 +266,7 @@ const SEED={
   stores:[{
     id:'zhonghe-yian',
     name:'中和宜安',
+    channel:'大樹',
     reason:'6月單月出貨12盒(低基期暴衝),需分辨真需求 vs 單月假象。最大實務風險:安全庫存可能已被清空,若7月斷貨會親手掐死剛萌芽的動能,數據上會看起來像「暴衝回落」,永遠分不清是假性還是被斷貨害的。',
     checkpoints:[
       '進門第一眼:架上HAUD還剩幾盒',
@@ -320,7 +324,14 @@ function render(){
     el.innerHTML='<div class="empty">尚無警示店。點「＋ 新增警示店」開始。</div>';
     return;
   }
-  el.innerHTML=state.stores.map(s=>{
+  const byCh={};
+  state.stores.forEach(s=>{(byCh[s.channel]=byCh[s.channel]||[]).push(s);});
+  el.innerHTML=Object.keys(byCh).sort().map(ch=>
+    '<div class="sec-label">'+esc(ch)+'('+byCh[ch].length+')</div>'+
+    byCh[ch].map(s=>storeCard(s)).join('')
+  ).join('');
+}
+function storeCard(s){
     const lv=lastVisit(s.id);
     const tag=lv?'<span class="tag done">已拜訪 '+esc(lv.date)+'</span>':'<span class="tag pending">待拜訪</span>';
     const visits=state.visits.filter(v=>v.storeId===s.id).sort((a,b)=>b.date.localeCompare(a.date));
@@ -354,7 +365,6 @@ function render(){
         '</div>'+
         vh+
       '</div></div>';
-  }).join('');
 }
 
 function toggleStore(id){
@@ -385,14 +395,25 @@ async function saveVisit(id){
   document.getElementById('st-'+id).classList.add('open');
   toast('已儲存');
 }
-function openAddStore(){document.getElementById('addStoreModal').classList.add('show');}
+function openAddStore(){
+  const sel=document.getElementById('ns-channel');
+  sel.innerHTML=state.channels.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('')+
+    '<option value="__new__">＋ 新增通路...</option>';
+  document.getElementById('addStoreModal').classList.add('show');
+}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 async function saveStore(){
   const name=document.getElementById('ns-name').value.trim();
   if(!name){toast('請輸入門市名稱');return;}
+  let ch=document.getElementById('ns-channel').value;
+  if(ch==='__new__'){
+    ch=(prompt('輸入新通路名稱(例:佑全)')||'').trim();
+    if(!ch){toast('未輸入通路,已取消');return;}
+    if(!state.channels.includes(ch))state.channels.push(ch);
+  }
   const cps=document.getElementById('ns-cp').value.split('\n').map(x=>x.trim()).filter(Boolean);
   state.stores.push({
-    id:'s'+Date.now(),name:name,
+    id:'s'+Date.now(),name:name,channel:ch,
     reason:document.getElementById('ns-reason').value.trim(),
     checkpoints:cps.length?cps:['(未設定檢查點)'],
     createdAt:new Date().toISOString()
@@ -499,7 +520,11 @@ async function deleteTodo(id){
 
 function openReport(){
   let out='【警示店拜訪回報】產出日期:'+today()+'\n\n';
-  state.stores.forEach(s=>{
+  const byCh={};
+  state.stores.forEach(s=>{(byCh[s.channel]=byCh[s.channel]||[]).push(s);});
+  Object.keys(byCh).sort().forEach(ch=>{
+    out+='=== 通路:'+ch+' ===\n';
+    byCh[ch].forEach(s=>{
     const vs=state.visits.filter(v=>v.storeId===s.id).sort((a,b)=>a.date.localeCompare(b.date));
     out+='■ '+s.name+'\n警示原因:'+s.reason+'\n';
     if(!vs.length){out+='(尚未拜訪)\n\n';return;}
@@ -511,6 +536,7 @@ function openReport(){
       out+='\n';
     });
     out+='\n';
+    });
   });
   if(state.notes.length){
     out+='【隨手記 / 現場情報】\n';
