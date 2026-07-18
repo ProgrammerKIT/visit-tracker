@@ -172,7 +172,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.6.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.6.2</p>
 </header>
 
 <div class="wrap">
@@ -505,7 +505,7 @@ function renderTodos(){
   const el=document.getElementById('todoList');
   if(!state.todos.length){el.innerHTML='<div class="empty">還沒有追蹤事項。</div>';return;}
   let h='';
-  ['Client','Office'].forEach(cat=>{
+  ['Office','Client'].forEach(cat=>{
     const list=state.todos.filter(t=>(t.cat||'Client')===cat);
     if(!list.length)return;
     const open=list.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
@@ -609,7 +609,7 @@ function buildReport(){
   const openT=state.todos.filter(t=>!t.done),doneT=state.todos.filter(t=>t.done);
   if(openT.length||doneT.length){
     out+='【追蹤待辦】(全部)\n';
-    ['Client','Office'].forEach(cat=>{
+    ['Office','Client'].forEach(cat=>{
       const o=openT.filter(t=>(t.cat||'Client')===cat),d=doneT.filter(t=>(t.cat||'Client')===cat);
       if(!o.length&&!d.length)return;
       out+='('+cat+')\n';
