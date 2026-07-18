@@ -157,12 +157,22 @@
   .t-due{font-size:12px;color:var(--alert);font-weight:600;margin-top:2px;}
   .todo-item.done .t-due{color:var(--sub);}
   .sec-label{font-size:13px;color:var(--sub);font-weight:700;letter-spacing:1px;margin:14px 0 8px;}
+  .cat-label{
+    font-size:15px;color:var(--alcon);font-weight:800;letter-spacing:1px;
+    margin:18px 0 6px;border-bottom:2px solid var(--alcon);padding-bottom:4px;
+  }
+  .seg button.sel-cat{background:var(--alcon);color:#fff;font-weight:600;}
+  .t-cat{
+    font-size:11px;font-weight:700;border:1px solid var(--alcon);color:var(--alcon);
+    padding:1px 7px;margin-right:6px;cursor:pointer;display:inline-block;
+  }
+  .todo-item.done .t-cat{border-color:var(--sub);color:var(--sub);}
 </style>
 </head>
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.5</p>
+  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.6</p>
 </header>
 
 <div class="wrap">
@@ -191,6 +201,10 @@
 
   <div class="pane" id="pane-todos">
     <div class="quickform">
+      <div class="field"><label>分類</label><div class="seg">
+        <button id="cat-client" class="sel-cat" onclick="setCat('Client')">Client</button>
+        <button id="cat-office" onclick="setCat('Office')">Office</button>
+      </div></div>
       <div class="field"><label>追蹤事項</label><input type="text" id="qt-text" placeholder="例:7月底前確認宜安補貨到位"></div>
       <div class="field"><label>期限(選填)</label><input type="date" id="qt-due"></div>
       <button class="btn primary" style="width:100%" onclick="saveTodo()">加入待辦</button>
@@ -240,6 +254,7 @@ function migrate(s){
   if(!s.todos)s.todos=[];
   if(!s.channels||!s.channels.length)s.channels=['大樹'];
   ['佑全','躍獅','其他'].forEach(c=>{if(!s.channels.includes(c))s.channels.push(c);});
+  s.todos.forEach(t=>{if(!t.cat)t.cat='Client';});
   s.stores.forEach(st=>{if(!st.channel)st.channel='大樹';});
   return s;
 }
@@ -480,27 +495,44 @@ async function deleteNote(id){
 }
 
 /* ---- 追蹤待辦 ---- */
+let pendingCat='Client';
+function setCat(c){
+  pendingCat=c;
+  document.getElementById('cat-client').className=c==='Client'?'sel-cat':'';
+  document.getElementById('cat-office').className=c==='Office'?'sel-cat':'';
+}
 function renderTodos(){
   const el=document.getElementById('todoList');
-  const open=state.todos.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
-  const done=state.todos.filter(t=>t.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
-  if(!open.length&&!done.length){el.innerHTML='<div class="empty">還沒有追蹤事項。</div>';return;}
+  if(!state.todos.length){el.innerHTML='<div class="empty">還沒有追蹤事項。</div>';return;}
   let h='';
-  if(open.length){h+='<div class="sec-label">進行中</div>'+open.map(t=>todoRow(t)).join('');}
-  if(done.length){h+='<div class="sec-label">已完成</div>'+done.map(t=>todoRow(t)).join('');}
+  ['Client','Office'].forEach(cat=>{
+    const list=state.todos.filter(t=>(t.cat||'Client')===cat);
+    if(!list.length)return;
+    const open=list.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+    const done=list.filter(t=>t.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
+    h+='<div class="cat-label">'+cat+'('+open.length+')</div>';
+    if(open.length){h+='<div class="sec-label">進行中</div>'+open.map(t=>todoRow(t)).join('');}
+    if(done.length){h+='<div class="sec-label">已完成</div>'+done.map(t=>todoRow(t)).join('');}
+  });
   el.innerHTML=h;
 }
 function todoRow(t){
   return '<div class="todo-item'+(t.done?' done':'')+'">'+
     '<input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleTodo(\''+t.id+'\')">'+
-    '<div class="t-text">'+esc(t.text)+
+    '<div class="t-text"><span class="t-cat" onclick="swapCat(\''+t.id+'\')">'+esc(t.cat||'Client')+'</span>'+esc(t.text)+
     (t.due?'<div class="t-due">期限 '+esc(t.due)+'</div>':'')+'</div>'+
     '<button class="item-del" onclick="deleteTodo(\''+t.id+'\')">刪除</button></div>';
+}
+async function swapCat(id){
+  const t=state.todos.find(x=>x.id===id);
+  if(!t)return;
+  t.cat=(t.cat||'Client')==='Client'?'Office':'Client';
+  await persist();renderTodos();toast('已改為 '+t.cat);
 }
 async function saveTodo(){
   const text=document.getElementById('qt-text').value.trim();
   if(!text){toast('請輸入事項');return;}
-  state.todos.push({id:'t'+Date.now(),text:text,created:today(),
+  state.todos.push({id:'t'+Date.now(),text:text,created:today(),cat:pendingCat,
     due:document.getElementById('qt-due').value||'',done:false,doneDate:''});
   await persist();
   document.getElementById('qt-text').value='';
@@ -566,8 +598,13 @@ function buildReport(){
   const openT=state.todos.filter(t=>!t.done),doneT=state.todos.filter(t=>t.done);
   if(openT.length||doneT.length){
     out+='【追蹤待辦】(全部)\n';
-    openT.forEach(t=>{out+='- [未完成] '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
-    doneT.forEach(t=>{out+='- [已完成 '+t.doneDate+'] '+t.text+'\n';});
+    ['Client','Office'].forEach(cat=>{
+      const o=openT.filter(t=>(t.cat||'Client')===cat),d=doneT.filter(t=>(t.cat||'Client')===cat);
+      if(!o.length&&!d.length)return;
+      out+='('+cat+')\n';
+      o.forEach(t=>{out+='- [未完成] '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
+      d.forEach(t=>{out+='- [已完成 '+t.doneDate+'] '+t.text+'\n';});
+    });
     out+='\n';
   }
   document.getElementById('reportText').value=out;
