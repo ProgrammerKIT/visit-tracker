@@ -172,7 +172,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.6</p>
+  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.6.1</p>
 </header>
 
 <div class="wrap">
@@ -521,7 +521,18 @@ function todoRow(t){
     '<input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleTodo(\''+t.id+'\')">'+
     '<div class="t-text"><span class="t-cat" onclick="swapCat(\''+t.id+'\')">'+esc(t.cat||'Client')+'</span>'+esc(t.text)+
     (t.due?'<div class="t-due">期限 '+esc(t.due)+'</div>':'')+'</div>'+
+    '<button class="item-del" onclick="editTodo(\''+t.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteTodo(\''+t.id+'\')">刪除</button></div>';
+}
+async function editTodo(id){
+  const t=state.todos.find(x=>x.id===id);
+  if(!t)return;
+  const nt=prompt('修改事項內容:',t.text);
+  if(nt===null)return; /* 取消 */
+  const v=nt.trim();
+  if(!v){toast('內容不可為空,未修改');return;}
+  t.text=v;
+  await persist();renderTodos();toast('已修改');
 }
 async function swapCat(id){
   const t=state.todos.find(x=>x.id===id);
