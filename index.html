@@ -172,7 +172,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · v1.6.2</p>
+  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · 備份 · v1.7</p>
 </header>
 
 <div class="wrap">
@@ -180,6 +180,7 @@
     <button id="tab-stores" class="on" onclick="switchTab('stores')">警示店</button>
     <button id="tab-notes" onclick="switchTab('notes')">隨手記</button>
     <button id="tab-todos" onclick="switchTab('todos')">追蹤待辦</button>
+    <button id="tab-backup" onclick="switchTab('backup')">備份</button>
   </div>
 
   <div class="pane on" id="pane-stores">
@@ -210,6 +211,23 @@
       <button class="btn primary" style="width:100%" onclick="saveTodo()">加入待辦</button>
     </div>
     <div id="todoList"></div>
+  </div>
+
+  <div class="pane" id="pane-backup">
+    <div id="backupInfo" class="quickform" style="font-size:14px;"></div>
+    <div class="quickform">
+      <div class="sec-label" style="margin-top:0">匯出備份</div>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">產出一段備份碼,存到備忘錄/密碼App,或貼給Claude留底。</p>
+      <button class="btn primary" style="width:100%" onclick="exportBackup()">產出備份碼</button>
+      <textarea id="bk-out" readonly style="width:100%;min-height:90px;margin-top:10px;font-size:11px;border:1px solid var(--line);padding:8px;font-family:monospace;display:none;"></textarea>
+      <button class="btn" id="bk-copy" style="width:100%;margin-top:8px;display:none;" onclick="copyBackup()">複製備份碼</button>
+    </div>
+    <div class="quickform">
+      <div class="sec-label" style="margin-top:0">匯入還原</div>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">貼上先前的備份碼,將完整覆蓋目前所有資料。</p>
+      <textarea id="bk-in" placeholder="貼上 GTBK1. 開頭的備份碼" style="width:100%;min-height:90px;font-size:11px;border:1px solid var(--line);padding:8px;font-family:monospace;"></textarea>
+      <button class="btn danger" style="width:100%;margin-top:8px;" onclick="importBackup()">還原資料</button>
+    </div>
   </div>
 </div>
 
@@ -306,6 +324,8 @@ async function load(){
     try{await persist();}catch(err){console.error(err);}
   }
   render();renderNotes();renderTodos();
+  const days=state.lastBackup?Math.floor((new Date(today())-new Date(state.lastBackup))/86400000):999;
+  if(days>=7)setTimeout(()=>toast(state.lastBackup?'距上次備份已'+days+'天,建議到「備份」分頁備份':'尚未備份過,建議到「備份」分頁備份'),800);
 }
 async function persist(){
   const payload=JSON.stringify(state);
@@ -461,10 +481,69 @@ async function removeStore(id){
   await persist();render();toast('已移除');
 }
 function switchTab(t){
-  ['stores','notes','todos'].forEach(x=>{
+  ['stores','notes','todos','backup'].forEach(x=>{
     document.getElementById('tab-'+x).classList.toggle('on',x===t);
     document.getElementById('pane-'+x).classList.toggle('on',x===t);
   });
+  if(t==='backup')updateBackupInfo();
+}
+
+/* ---- 備份 / 還原 ---- */
+function chk(s){let h=5381;for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0;}return h.toString(36);}
+function b64e(s){return btoa(unescape(encodeURIComponent(s)));}
+function b64d(s){return decodeURIComponent(escape(atob(s)));}
+function updateBackupInfo(){
+  const el=document.getElementById('backupInfo');
+  const c={stores:state.stores.length,visits:state.visits.length,notes:state.notes.length,todos:state.todos.length};
+  let line='目前資料:警示店 '+c.stores+' · 拜訪 '+c.visits+' · 隨手記 '+c.notes+' · 待辦 '+c.todos+'<br>';
+  if(state.lastBackup){
+    const days=Math.floor((new Date(today())-new Date(state.lastBackup))/86400000);
+    line+='上次備份:'+state.lastBackup+'(距今 '+days+' 天)';
+    if(days>=7)line+=' <b style="color:var(--alert)">建議立即備份</b>';
+  }else{
+    line+='<b style="color:var(--alert)">從未備份,建議立即備份</b>';
+  }
+  el.innerHTML=line;
+}
+async function exportBackup(){
+  state.lastBackup=today();
+  await persist();
+  const json=JSON.stringify(state);
+  const body=b64e(json);
+  const code='GTBK1.'+body+'.'+chk(body);
+  const ta=document.getElementById('bk-out');
+  ta.value=code;ta.style.display='block';
+  document.getElementById('bk-copy').style.display='block';
+  updateBackupInfo();
+  toast('備份碼已產出,請複製保存');
+}
+function copyBackup(){
+  const ta=document.getElementById('bk-out');
+  ta.select();ta.setSelectionRange(0,9999999);
+  let ok=false;
+  try{ok=document.execCommand('copy');}catch(e){}
+  if(!ok&&navigator.clipboard){
+    navigator.clipboard.writeText(ta.value).then(()=>toast('已複製')).catch(()=>toast('請手動長按全選複製'));
+    return;
+  }
+  toast(ok?'已複製':'請手動長按全選複製');
+}
+async function importBackup(){
+  const raw=document.getElementById('bk-in').value.trim();
+  if(!raw){toast('請先貼上備份碼');return;}
+  const m=raw.match(/^GTBK1\.([A-Za-z0-9+/=]+)\.([a-z0-9]+)$/);
+  if(!m){toast('備份碼格式不正確');return;}
+  if(chk(m[1])!==m[2]){toast('備份碼不完整或已損壞(校驗失敗),請確認有複製到全文');return;}
+  let data;
+  try{data=migrate(JSON.parse(b64d(m[1])));}
+  catch(e){toast('備份碼解析失敗');return;}
+  const c={s:data.stores.length,v:data.visits.length,n:data.notes.length,t:data.todos.length};
+  if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋,無法復原。'))return;
+  state=data;
+  await persist();
+  render();renderNotes();renderTodos();updateBackupInfo();
+  document.getElementById('bk-in').value='';
+  toast('還原完成');
 }
 
 /* ---- 隨手記 ---- */
