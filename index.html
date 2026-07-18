@@ -187,7 +187,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v1.8</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v1.8.1</p>
 </header>
 
 <div class="wrap">
@@ -231,7 +231,10 @@
 
   <div class="pane" id="pane-samples">
     <div class="quickform">
-      <div class="field"><label>門市名稱</label><input type="text" id="sp-store" placeholder="例:大樹-中和宜安"></div>
+      <div class="field"><label>通路</label><select id="sp-channel" onchange="spChanChange()"></select>
+        <input type="text" id="sp-chother" placeholder="輸入通路名稱" style="margin-top:8px;display:none;">
+      </div>
+      <div class="field"><label>門市名稱</label><input type="text" id="sp-store" placeholder="例:中和宜安"></div>
       <div class="field"><label>試用品品項(可複選)</label>
         <div class="chkrow"><label class="chk"><input type="checkbox" id="sp-complete"> Complete</label>
         <label class="chk"><input type="checkbox" id="sp-haud"> HAUD</label>
@@ -359,7 +362,7 @@ async function load(){
     state=migrate(SEED);
     try{await persist();}catch(err){console.error(err);}
   }
-  render();renderNotes();renderTodos();renderSamples();
+  render();renderNotes();renderTodos();renderSamples();fillSampleChannels();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
   });
@@ -485,7 +488,7 @@ async function saveStore(){
   if(ch==='__new__'){
     ch=(prompt('輸入新通路名稱(例:佑全)')||'').trim();
     if(!ch){toast('未輸入通路,已取消');return;}
-    if(!state.channels.includes(ch))state.channels.push(ch);
+    if(!state.channels.includes(ch))state.channels.push(ch);fillSampleChannels();
   }
   const cps=document.getElementById('ns-cp').value.split('\n').map(x=>x.trim()).filter(Boolean);
   state.stores.push({
@@ -530,6 +533,18 @@ function switchTab(t){
 /* ---- 試用品配送 ---- */
 let pendingPr='orange';
 const PR={red:{t:'緊急🔴',o:0},orange:{t:'中度🟠',o:1},green:{t:'順路才去🟢',o:2}};
+function fillSampleChannels(){
+  const sel=document.getElementById('sp-channel');
+  const keep=sel.value;
+  const base=state.channels.filter(c=>c!=='其他');
+  sel.innerHTML=base.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('')+
+    '<option value="__other__">其他</option>';
+  if(keep)sel.value=keep;
+}
+function spChanChange(){
+  document.getElementById('sp-chother').style.display=
+    document.getElementById('sp-channel').value==='__other__'?'block':'none';
+}
 function setPr(p){
   pendingPr=p;
   ['red','orange','green'].forEach(x=>{
@@ -554,13 +569,18 @@ function renderSamples(){
 function sampleRow(s){
   return '<div class="sample-item pr-'+s.priority+(s.done?' done':'')+'">'+
     '<input type="checkbox" '+(s.done?'checked':'')+' onchange="toggleSample(\''+s.id+'\')">'+
-    '<div class="s-body"><div class="s-store">'+PR[s.priority].t.slice(-2)+' '+esc(s.store)+'</div>'+
+    '<div class="s-body"><div class="s-store">'+PR[s.priority].t.slice(-2)+' '+(s.channel?esc(s.channel)+'-':'')+esc(s.store)+'</div>'+
     '<div class="s-items">'+esc(sampleItems(s))+(s.done&&s.doneDate?' · 送達 '+esc(s.doneDate):'')+'</div></div>'+
     '<button class="item-del" onclick="deleteSample(\''+s.id+'\')">刪除</button></div>';
 }
 async function saveSample(){
   const storeName=document.getElementById('sp-store').value.trim();
   if(!storeName){toast('請輸入門市名稱');return;}
+  let chan=document.getElementById('sp-channel').value;
+  if(chan==='__other__'){
+    chan=document.getElementById('sp-chother').value.trim();
+    if(!chan){toast('選了「其他」請輸入通路名稱');return;}
+  }
   const items=[];
   if(document.getElementById('sp-complete').checked)items.push('Complete');
   if(document.getElementById('sp-haud').checked)items.push('HAUD');
@@ -570,10 +590,13 @@ async function saveSample(){
     if(!other){toast('勾了「其他」請輸入品項內容');return;}
   }
   if(!items.length&&!other){toast('請至少勾選一個品項');return;}
-  state.samples.push({id:'sp'+Date.now(),store:storeName,items:items,other:other,
+  state.samples.push({id:'sp'+Date.now(),store:storeName,channel:chan,items:items,other:other,
     priority:pendingPr,created:today(),done:false,doneDate:''});
   await persist();
   document.getElementById('sp-store').value='';
+  document.getElementById('sp-chother').value='';
+  document.getElementById('sp-chother').style.display='none';
+  document.getElementById('sp-channel').selectedIndex=0;
   ['sp-complete','sp-haud','sp-otherchk'].forEach(i=>document.getElementById(i).checked=false);
   document.getElementById('sp-othertext').value='';
   document.getElementById('sp-othertext').style.display='none';
@@ -805,8 +828,8 @@ function buildReport(){
   if(openS.length||doneS.length){
     out+='【試用品配送】(全部)\n';
     openS.sort((a,b)=>PR[a.priority].o-PR[b.priority].o).forEach(s=>{
-      out+='- [待送·'+PR[s.priority].t+'] '+s.store+':'+sampleItems(s)+'\n';});
-    doneS.forEach(s=>{out+='- [已送達 '+s.doneDate+'] '+s.store+':'+sampleItems(s)+'\n';});
+      out+='- [待送·'+PR[s.priority].t+'] '+(s.channel?s.channel+'-':'')+s.store+':'+sampleItems(s)+'\n';});
+    doneS.forEach(s=>{out+='- [已送達 '+s.doneDate+'] '+(s.channel?s.channel+'-':'')+s.store+':'+sampleItems(s)+'\n';});
     out+='\n';
   }
   document.getElementById('reportText').value=out;
