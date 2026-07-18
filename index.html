@@ -168,6 +168,16 @@
   }
   .todo-item.done .t-cat{border-color:var(--sub);color:var(--sub);}
   .chkrow{display:flex;gap:14px;flex-wrap:wrap;}
+  .itemrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .qty{width:72px;border:1px solid var(--line);padding:9px;font-size:16px;font-family:inherit;text-align:center;}
+  .sample-flag{
+    border-left:4px solid var(--alert);background:var(--panel);
+    padding:8px 10px;font-size:13px;font-weight:600;margin-bottom:12px;
+  }
+  .alert-banner{
+    border:1px solid var(--alert);color:var(--alert);background:#fff;
+    padding:10px 12px;font-weight:700;font-size:14px;margin-bottom:14px;
+  }
   .chk{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;}
   .chk input{width:20px;height:20px;accent-color:var(--alcon);}
   .seg button.sel-pr-red{background:var(--alert);color:#fff;font-weight:700;}
@@ -187,7 +197,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v1.8.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v1.9</p>
 </header>
 
 <div class="wrap">
@@ -230,15 +240,16 @@
   </div>
 
   <div class="pane" id="pane-samples">
+    <div id="sampleAlert"></div>
     <div class="quickform">
       <div class="field"><label>通路</label><select id="sp-channel" onchange="spChanChange()"></select>
         <input type="text" id="sp-chother" placeholder="輸入通路名稱" style="margin-top:8px;display:none;">
       </div>
       <div class="field"><label>門市名稱</label><input type="text" id="sp-store" placeholder="例:中和宜安"></div>
-      <div class="field"><label>試用品品項(可複選)</label>
-        <div class="chkrow"><label class="chk"><input type="checkbox" id="sp-complete"> Complete</label>
-        <label class="chk"><input type="checkbox" id="sp-haud"> HAUD</label>
-        <label class="chk"><input type="checkbox" id="sp-otherchk"> 其他</label></div>
+      <div class="field"><label>試用品品項(可複選,附數量)</label>
+        <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-complete"> Complete</label><input type="number" class="qty" id="sp-complete-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
+        <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-haud"> HAUD</label><input type="number" class="qty" id="sp-haud-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
+        <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-otherchk"> 其他</label><input type="number" class="qty" id="sp-other-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
         <input type="text" id="sp-othertext" placeholder="其他品項內容" style="margin-top:8px;display:none;">
       </div>
       <div class="field"><label>優先程度</label><div class="seg">
@@ -365,9 +376,18 @@ async function load(){
   render();renderNotes();renderTodos();renderSamples();fillSampleChannels();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
+    document.getElementById('sp-other-q').style.display=e.target.checked?'inline-block':'none';
+  });
+  document.getElementById('sp-complete').addEventListener('change',e=>{
+    document.getElementById('sp-complete-q').style.display=e.target.checked?'inline-block':'none';
+  });
+  document.getElementById('sp-haud').addEventListener('change',e=>{
+    document.getElementById('sp-haud-q').style.display=e.target.checked?'inline-block':'none';
   });
   const days=state.lastBackup?Math.floor((new Date(today())-new Date(state.lastBackup))/86400000):999;
   if(days>=7)setTimeout(()=>toast(state.lastBackup?'距上次備份已'+days+'天,建議到「備份」分頁備份':'尚未備份過,建議到「備份」分頁備份'),800);
+  const od=state.samples.filter(s=>!s.done&&s.priority==='red'&&dayDiff(s.created,today())>=3).length;
+  if(od)setTimeout(()=>toast('⚠ '+od+' 筆緊急試用品超過3天未送達'),2800);
 }
 async function persist(){
   const payload=JSON.stringify(state);
@@ -411,6 +431,10 @@ function render(){
   ).join('');
 }
 function storeCard(s){
+  const pend=state.samples.filter(sp=>!sp.done&&sp.channel===s.channel&&
+    (sp.store===s.name||sp.store.includes(s.name)||s.name.includes(sp.store)));
+  const flag=pend.length?'<div class="sample-flag">📦 試用品待送:'+
+    pend.map(x=>PR[x.priority].t.slice(-2)+' '+esc(sampleItems(x))).join(' ; ')+'</div>':'';
     const lv=lastVisit(s.id);
     const tag=lv?'<span class="tag done">已拜訪 '+esc(lv.date)+'</span>':'<span class="tag pending">待拜訪</span>';
     const visits=state.visits.filter(v=>v.storeId===s.id).sort((a,b)=>b.date.localeCompare(a.date));
@@ -427,6 +451,7 @@ function storeCard(s){
         '<span class="name">'+esc(s.name)+'</span>'+tag+
       '</div>'+
       '<div class="store-body">'+
+        flag+
         '<p class="reason">'+esc(s.reason)+'</p>'+
         '<div class="checkpoint"><div class="cp-label">現場檢查點</div><ul>'+
           s.checkpoints.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul></div>'+
@@ -551,13 +576,19 @@ function setPr(p){
     document.getElementById('pr-'+x).className=(x===p)?('sel-pr-'+x):'';
   });
 }
+function dayDiff(a,b){return Math.floor((new Date(b)-new Date(a))/86400000);}
 function sampleItems(s){
-  const arr=[...(s.items||[])];
+  const arr=(s.items||[]).map(i=>typeof i==='string'?i:(i.n+'×'+i.q));
   if(s.other)arr.push(s.other);
   return arr.join('、');
 }
 function renderSamples(){
   const el=document.getElementById('sampleList');
+  const alertEl=document.getElementById('sampleAlert');
+  const overdue=state.samples.filter(s=>!s.done&&s.priority==='red'&&dayDiff(s.created,today())>=3);
+  alertEl.innerHTML=overdue.length?
+    '<div class="alert-banner">⚠ '+overdue.length+' 筆緊急🔴試用品已超過3天未送達:'+
+    overdue.map(s=>(s.channel?s.channel+'-':'')+s.store).join('、')+'</div>':'';
   if(!state.samples.length){el.innerHTML='<div class="empty">目前沒有待送的試用品。</div>';return;}
   const open=state.samples.filter(s=>!s.done).sort((a,b)=>(PR[a.priority].o-PR[b.priority].o)||a.created.localeCompare(b.created));
   const done=state.samples.filter(s=>s.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
@@ -582,14 +613,16 @@ async function saveSample(){
     if(!chan){toast('選了「其他」請輸入通路名稱');return;}
   }
   const items=[];
-  if(document.getElementById('sp-complete').checked)items.push('Complete');
-  if(document.getElementById('sp-haud').checked)items.push('HAUD');
+  const q=id=>Math.max(1,Number(document.getElementById(id).value)||1);
+  if(document.getElementById('sp-complete').checked)items.push({n:'Complete',q:q('sp-complete-q')});
+  if(document.getElementById('sp-haud').checked)items.push({n:'HAUD',q:q('sp-haud-q')});
   let other='';
   if(document.getElementById('sp-otherchk').checked){
-    other=document.getElementById('sp-othertext').value.trim();
-    if(!other){toast('勾了「其他」請輸入品項內容');return;}
+    const ot=document.getElementById('sp-othertext').value.trim();
+    if(!ot){toast('勾了「其他」請輸入品項內容');return;}
+    items.push({n:ot,q:q('sp-other-q')});
   }
-  if(!items.length&&!other){toast('請至少勾選一個品項');return;}
+  if(!items.length){toast('請至少勾選一個品項');return;}
   state.samples.push({id:'sp'+Date.now(),store:storeName,channel:chan,items:items,other:other,
     priority:pendingPr,created:today(),done:false,doneDate:''});
   await persist();
@@ -598,21 +631,22 @@ async function saveSample(){
   document.getElementById('sp-chother').style.display='none';
   document.getElementById('sp-channel').selectedIndex=0;
   ['sp-complete','sp-haud','sp-otherchk'].forEach(i=>document.getElementById(i).checked=false);
+  ['sp-complete-q','sp-haud-q','sp-other-q'].forEach(i=>{const e=document.getElementById(i);e.value=1;e.style.display='none';});
   document.getElementById('sp-othertext').value='';
   document.getElementById('sp-othertext').style.display='none';
-  renderSamples();toast('已加入配送清單');
+  renderSamples();render();toast('已加入配送清單');
 }
 async function toggleSample(id){
   const s=state.samples.find(x=>x.id===id);
   if(!s)return;
   s.done=!s.done;
   s.doneDate=s.done?today():'';
-  await persist();renderSamples();
+  await persist();renderSamples();render();
 }
 async function deleteSample(id){
   if(!confirm('刪除這筆試用品配送?'))return;
   state.samples=state.samples.filter(x=>x.id!==id);
-  await persist();renderSamples();toast('已刪除');
+  await persist();renderSamples();render();toast('已刪除');
 }
 
 /* ---- 備份 / 還原 ---- */
