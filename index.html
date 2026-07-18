@@ -310,6 +310,10 @@
   <div class="modal">
     <h3>拜訪回報文字</h3>
     <div class="field"><label>輸出範圍</label><select id="rp-channel" onchange="buildReport()"></select></div>
+    <div class="field"><label>時間範圍</label><select id="rp-range" onchange="buildReport()">
+      <option value="45">近45天(月度分析用)</option>
+      <option value="all">全部歷史(備份留底用)</option>
+    </select></div>
     <textarea class="report" id="reportText" readonly></textarea>
     <p class="hint">全選複製後,貼回Claude對話即可納入月度分析判讀。</p>
     <div class="row2">
@@ -871,9 +875,12 @@ function openReport(){
 }
 function buildReport(){
   const pick=document.getElementById('rp-channel').value||'__all__';
+  const range=(document.getElementById('rp-range')||{}).value||'45';
+  const cut=new Date(new Date(today())-45*86400000).toISOString().slice(0,10);
+  const inRange=d=>range==='all'||!d||d>=cut;
   const inScope=s=>pick==='__all__'||s.channel===pick;
   const tag=pick==='__all__'?'全部通路':pick;
-  let out='【警示店拜訪回報 · '+tag+'】產出日期:'+today()+'\n\n';
+  let out='【警示店拜訪回報 · '+tag+' · '+(range==='all'?'全部歷史':'近45天')+'】產出日期:'+today()+'\n\n';
   const byCh={};
   state.stores.filter(inScope).forEach(s=>{(byCh[s.channel]=byCh[s.channel]||[]).push(s);});
   Object.keys(byCh).sort().forEach(ch=>{
@@ -881,7 +888,7 @@ function buildReport(){
     byCh[ch].forEach(s=>{
     const vs=state.visits.filter(v=>v.storeId===s.id).sort((a,b)=>a.date.localeCompare(b.date));
     out+='■ '+s.name+'\n警示原因:'+s.reason+'\n';
-    if(!vs.length){out+='(尚未拜訪)\n\n';return;}
+    if(!vs.length){out+='(此範圍內無拜訪紀錄)\n\n';return;}
     vs.forEach(v=>{
       out+='- '+v.date+' 架上HAUD:'+(v.shelfCount===''?'未記':v.shelfCount+'盒')+
         ' | '+(v.stockout==='yes'?'斷貨/低於安全量':'庫存正常');
@@ -893,6 +900,7 @@ function buildReport(){
     });
   });
   const noteScope=state.notes.filter(n=>{
+    if(!inRange(n.date))return false;
     if(pick==='__all__')return true;
     if(!n.store)return true; /* 未標記通路的隨手記一律附上,避免漏情報 */
     if(n.store.includes(pick))return true;
@@ -905,7 +913,7 @@ function buildReport(){
     });
     out+='\n';
   }
-  const openT=state.todos.filter(t=>!t.done),doneT=state.todos.filter(t=>t.done);
+  const openT=state.todos.filter(t=>!t.done),doneT=state.todos.filter(t=>t.done&&inRange(t.doneDate));
   if(openT.length||doneT.length){
     out+='【追蹤待辦】(全部)\n';
     ['Office','Client'].forEach(cat=>{
@@ -917,7 +925,7 @@ function buildReport(){
     });
     out+='\n';
   }
-  const openS=state.samples.filter(s=>!s.done),doneS=state.samples.filter(s=>s.done);
+  const openS=state.samples.filter(s=>!s.done),doneS=state.samples.filter(s=>s.done&&inRange(s.doneDate));
   if(openS.length||doneS.length){
     out+='【試用品配送】(全部)\n';
     openS.sort((a,b)=>PR[a.priority].o-PR[b.priority].o).forEach(s=>{
