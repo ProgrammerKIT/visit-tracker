@@ -167,19 +167,35 @@
     padding:1px 7px;margin-right:6px;cursor:pointer;display:inline-block;
   }
   .todo-item.done .t-cat{border-color:var(--sub);color:var(--sub);}
+  .chkrow{display:flex;gap:14px;flex-wrap:wrap;}
+  .chk{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;}
+  .chk input{width:20px;height:20px;accent-color:var(--alcon);}
+  .seg button.sel-pr-red{background:var(--alert);color:#fff;font-weight:700;}
+  .seg button.sel-pr-orange{background:#D97706;color:#fff;font-weight:700;}
+  .seg button.sel-pr-green{background:var(--ok);color:#fff;font-weight:700;}
+  .sample-item{border:1px solid var(--line);border-left:4px solid var(--line);padding:11px 12px;margin-bottom:8px;background:#fff;font-size:14px;display:flex;gap:10px;align-items:flex-start;}
+  .sample-item.pr-red{border-left-color:var(--alert);}
+  .sample-item.pr-orange{border-left-color:#D97706;}
+  .sample-item.pr-green{border-left-color:var(--ok);}
+  .sample-item input[type=checkbox]{width:22px;height:22px;margin-top:1px;flex-shrink:0;accent-color:var(--alcon);}
+  .sample-item .s-body{flex:1;}
+  .sample-item .s-store{font-weight:700;}
+  .sample-item .s-items{color:var(--sub);margin-top:2px;font-size:13px;}
+  .sample-item.done .s-store,.sample-item.done .s-items{color:var(--sub);text-decoration:line-through;}
 </style>
 </head>
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 追蹤待辦 · 備份 · v1.7</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v1.8</p>
 </header>
 
 <div class="wrap">
   <div class="tabs">
     <button id="tab-stores" class="on" onclick="switchTab('stores')">警示店</button>
     <button id="tab-notes" onclick="switchTab('notes')">隨手記</button>
-    <button id="tab-todos" onclick="switchTab('todos')">追蹤待辦</button>
+    <button id="tab-todos" onclick="switchTab('todos')">待辦</button>
+    <button id="tab-samples" onclick="switchTab('samples')">試用品</button>
     <button id="tab-backup" onclick="switchTab('backup')">備份</button>
   </div>
 
@@ -211,6 +227,25 @@
       <button class="btn primary" style="width:100%" onclick="saveTodo()">加入待辦</button>
     </div>
     <div id="todoList"></div>
+  </div>
+
+  <div class="pane" id="pane-samples">
+    <div class="quickform">
+      <div class="field"><label>門市名稱</label><input type="text" id="sp-store" placeholder="例:大樹-中和宜安"></div>
+      <div class="field"><label>試用品品項(可複選)</label>
+        <div class="chkrow"><label class="chk"><input type="checkbox" id="sp-complete"> Complete</label>
+        <label class="chk"><input type="checkbox" id="sp-haud"> HAUD</label>
+        <label class="chk"><input type="checkbox" id="sp-otherchk"> 其他</label></div>
+        <input type="text" id="sp-othertext" placeholder="其他品項內容" style="margin-top:8px;display:none;">
+      </div>
+      <div class="field"><label>優先程度</label><div class="seg">
+        <button id="pr-red" onclick="setPr('red')">緊急🔴</button>
+        <button id="pr-orange" class="sel-pr-orange" onclick="setPr('orange')">中度🟠</button>
+        <button id="pr-green" onclick="setPr('green')">順路才去🟢</button>
+      </div></div>
+      <button class="btn primary" style="width:100%" onclick="saveSample()">加入配送清單</button>
+    </div>
+    <div id="sampleList"></div>
   </div>
 
   <div class="pane" id="pane-backup">
@@ -273,6 +308,7 @@ function migrate(s){
   if(!s.channels||!s.channels.length)s.channels=['大樹'];
   ['佑全','躍獅','其他'].forEach(c=>{if(!s.channels.includes(c))s.channels.push(c);});
   s.todos.forEach(t=>{if(!t.cat)t.cat='Client';});
+  if(!s.samples)s.samples=[];
   s.stores.forEach(st=>{if(!st.channel)st.channel='大樹';});
   return s;
 }
@@ -323,7 +359,10 @@ async function load(){
     state=migrate(SEED);
     try{await persist();}catch(err){console.error(err);}
   }
-  render();renderNotes();renderTodos();
+  render();renderNotes();renderTodos();renderSamples();
+  document.getElementById('sp-otherchk').addEventListener('change',e=>{
+    document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
+  });
   const days=state.lastBackup?Math.floor((new Date(today())-new Date(state.lastBackup))/86400000):999;
   if(days>=7)setTimeout(()=>toast(state.lastBackup?'距上次備份已'+days+'天,建議到「備份」分頁備份':'尚未備份過,建議到「備份」分頁備份'),800);
 }
@@ -481,11 +520,76 @@ async function removeStore(id){
   await persist();render();toast('已移除');
 }
 function switchTab(t){
-  ['stores','notes','todos','backup'].forEach(x=>{
+  ['stores','notes','todos','samples','backup'].forEach(x=>{
     document.getElementById('tab-'+x).classList.toggle('on',x===t);
     document.getElementById('pane-'+x).classList.toggle('on',x===t);
   });
   if(t==='backup')updateBackupInfo();
+}
+
+/* ---- 試用品配送 ---- */
+let pendingPr='orange';
+const PR={red:{t:'緊急🔴',o:0},orange:{t:'中度🟠',o:1},green:{t:'順路才去🟢',o:2}};
+function setPr(p){
+  pendingPr=p;
+  ['red','orange','green'].forEach(x=>{
+    document.getElementById('pr-'+x).className=(x===p)?('sel-pr-'+x):'';
+  });
+}
+function sampleItems(s){
+  const arr=[...(s.items||[])];
+  if(s.other)arr.push(s.other);
+  return arr.join('、');
+}
+function renderSamples(){
+  const el=document.getElementById('sampleList');
+  if(!state.samples.length){el.innerHTML='<div class="empty">目前沒有待送的試用品。</div>';return;}
+  const open=state.samples.filter(s=>!s.done).sort((a,b)=>(PR[a.priority].o-PR[b.priority].o)||a.created.localeCompare(b.created));
+  const done=state.samples.filter(s=>s.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
+  let h='';
+  if(open.length){h+='<div class="sec-label">待配送('+open.length+')</div>'+open.map(sampleRow).join('');}
+  if(done.length){h+='<div class="sec-label">已送達</div>'+done.map(sampleRow).join('');}
+  el.innerHTML=h;
+}
+function sampleRow(s){
+  return '<div class="sample-item pr-'+s.priority+(s.done?' done':'')+'">'+
+    '<input type="checkbox" '+(s.done?'checked':'')+' onchange="toggleSample(\''+s.id+'\')">'+
+    '<div class="s-body"><div class="s-store">'+PR[s.priority].t.slice(-2)+' '+esc(s.store)+'</div>'+
+    '<div class="s-items">'+esc(sampleItems(s))+(s.done&&s.doneDate?' · 送達 '+esc(s.doneDate):'')+'</div></div>'+
+    '<button class="item-del" onclick="deleteSample(\''+s.id+'\')">刪除</button></div>';
+}
+async function saveSample(){
+  const storeName=document.getElementById('sp-store').value.trim();
+  if(!storeName){toast('請輸入門市名稱');return;}
+  const items=[];
+  if(document.getElementById('sp-complete').checked)items.push('Complete');
+  if(document.getElementById('sp-haud').checked)items.push('HAUD');
+  let other='';
+  if(document.getElementById('sp-otherchk').checked){
+    other=document.getElementById('sp-othertext').value.trim();
+    if(!other){toast('勾了「其他」請輸入品項內容');return;}
+  }
+  if(!items.length&&!other){toast('請至少勾選一個品項');return;}
+  state.samples.push({id:'sp'+Date.now(),store:storeName,items:items,other:other,
+    priority:pendingPr,created:today(),done:false,doneDate:''});
+  await persist();
+  document.getElementById('sp-store').value='';
+  ['sp-complete','sp-haud','sp-otherchk'].forEach(i=>document.getElementById(i).checked=false);
+  document.getElementById('sp-othertext').value='';
+  document.getElementById('sp-othertext').style.display='none';
+  renderSamples();toast('已加入配送清單');
+}
+async function toggleSample(id){
+  const s=state.samples.find(x=>x.id===id);
+  if(!s)return;
+  s.done=!s.done;
+  s.doneDate=s.done?today():'';
+  await persist();renderSamples();
+}
+async function deleteSample(id){
+  if(!confirm('刪除這筆試用品配送?'))return;
+  state.samples=state.samples.filter(x=>x.id!==id);
+  await persist();renderSamples();toast('已刪除');
 }
 
 /* ---- 備份 / 還原 ---- */
@@ -494,8 +598,8 @@ function b64e(s){return btoa(unescape(encodeURIComponent(s)));}
 function b64d(s){return decodeURIComponent(escape(atob(s)));}
 function updateBackupInfo(){
   const el=document.getElementById('backupInfo');
-  const c={stores:state.stores.length,visits:state.visits.length,notes:state.notes.length,todos:state.todos.length};
-  let line='目前資料:警示店 '+c.stores+' · 拜訪 '+c.visits+' · 隨手記 '+c.notes+' · 待辦 '+c.todos+'<br>';
+  const c={stores:state.stores.length,visits:state.visits.length,notes:state.notes.length,todos:state.todos.length,samples:state.samples.length};
+  let line='目前資料:警示店 '+c.stores+' · 拜訪 '+c.visits+' · 隨手記 '+c.notes+' · 待辦 '+c.todos+' · 試用品 '+c.samples+'<br>';
   if(state.lastBackup){
     const days=Math.floor((new Date(today())-new Date(state.lastBackup))/86400000);
     line+='上次備份:'+state.lastBackup+'(距今 '+days+' 天)';
@@ -541,7 +645,7 @@ async function importBackup(){
   if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋,無法復原。'))return;
   state=data;
   await persist();
-  render();renderNotes();renderTodos();updateBackupInfo();
+  render();renderNotes();renderTodos();renderSamples();updateBackupInfo();
   document.getElementById('bk-in').value='';
   toast('還原完成');
 }
@@ -695,6 +799,14 @@ function buildReport(){
       o.forEach(t=>{out+='- [未完成] '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
       d.forEach(t=>{out+='- [已完成 '+t.doneDate+'] '+t.text+'\n';});
     });
+    out+='\n';
+  }
+  const openS=state.samples.filter(s=>!s.done),doneS=state.samples.filter(s=>s.done);
+  if(openS.length||doneS.length){
+    out+='【試用品配送】(全部)\n';
+    openS.sort((a,b)=>PR[a.priority].o-PR[b.priority].o).forEach(s=>{
+      out+='- [待送·'+PR[s.priority].t+'] '+s.store+':'+sampleItems(s)+'\n';});
+    doneS.forEach(s=>{out+='- [已送達 '+s.doneDate+'] '+s.store+':'+sampleItems(s)+'\n';});
     out+='\n';
   }
   document.getElementById('reportText').value=out;
