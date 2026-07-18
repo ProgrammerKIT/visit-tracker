@@ -197,7 +197,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v1.9</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.0</p>
 </header>
 
 <div class="wrap">
@@ -880,6 +880,9 @@ function copyReport(){
   toast(ok?'已複製':'請手動長按全選複製');
 }
 load();
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').catch(e=>console.log('sw register failed',e));
+}
 </script>
 </body>
 </html>
