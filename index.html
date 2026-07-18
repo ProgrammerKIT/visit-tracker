@@ -154,8 +154,9 @@
   .todo-item input[type=checkbox]{width:22px;height:22px;margin-top:1px;flex-shrink:0;accent-color:var(--alcon);}
   .todo-item .t-text{flex:1;}
   .todo-item.done .t-text{color:var(--sub);text-decoration:line-through;}
-  .t-due{font-size:12px;color:var(--alert);font-weight:600;margin-top:2px;}
-  .todo-item.done .t-due{color:var(--sub);}
+  .t-due{font-size:12px;color:var(--sub);font-weight:600;margin-top:2px;}
+  .t-due.over{color:var(--alert);font-weight:800;}
+  .todo-item.done .t-due{color:var(--sub);font-weight:600;}
   .sec-label{font-size:13px;color:var(--sub);font-weight:700;letter-spacing:1px;margin:14px 0 8px;}
   .cat-label{
     font-size:15px;color:var(--alcon);font-weight:800;letter-spacing:1px;
@@ -178,6 +179,14 @@
     border:1px solid var(--alert);color:var(--alert);background:#fff;
     padding:10px 12px;font-weight:700;font-size:14px;margin-bottom:14px;
   }
+  .summary{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .summary .chipbtn{
+    border:1px solid var(--line);background:var(--panel);padding:7px 11px;
+    font-size:13px;font-weight:600;color:var(--ink);font-family:inherit;cursor:pointer;
+  }
+  .summary .chipbtn b{font-size:15px;}
+  .summary .chipbtn.hot{border-color:var(--alert);color:var(--alert);}
+  .sec-label.clk{cursor:pointer;user-select:none;}
   .chk{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;}
   .chk input{width:20px;height:20px;accent-color:var(--alcon);}
   .seg button.sel-pr-red{background:var(--alert);color:#fff;font-weight:700;}
@@ -197,10 +206,11 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.0</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.1</p>
 </header>
 
 <div class="wrap">
+  <div id="summaryBar" class="summary"></div>
   <div class="tabs">
     <button id="tab-stores" class="on" onclick="switchTab('stores')">警示店</button>
     <button id="tab-notes" onclick="switchTab('notes')">隨手記</button>
@@ -373,7 +383,7 @@ async function load(){
     state=migrate(SEED);
     try{await persist();}catch(err){console.error(err);}
   }
-  render();renderNotes();renderTodos();renderSamples();fillSampleChannels();
+  render();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
     document.getElementById('sp-other-q').style.display=e.target.checked?'inline-block':'none';
@@ -436,7 +446,13 @@ function storeCard(s){
   const flag=pend.length?'<div class="sample-flag">📦 試用品待送:'+
     pend.map(x=>PR[x.priority].t.slice(-2)+' '+esc(sampleItems(x))).join(' ; ')+'</div>':'';
     const lv=lastVisit(s.id);
-    const tag=lv?'<span class="tag done">已拜訪 '+esc(lv.date)+'</span>':'<span class="tag pending">待拜訪</span>';
+    let tag;
+    if(!lv){tag='<span class="tag pending">待拜訪</span>';}
+    else{
+      const d=dayDiff(lv.date,today());
+      tag=d>30?'<span class="tag pending">距上次拜訪'+d+'天</span>'
+             :'<span class="tag done">已拜訪 '+esc(lv.date)+'('+d+'天前)</span>';
+    }
     const visits=state.visits.filter(v=>v.storeId===s.id).sort((a,b)=>b.date.localeCompare(a.date));
     const vh=visits.length?('<div class="history"><h4>拜訪紀錄</h4>'+visits.map(v=>
       '<div class="visit"><span class="v-date">'+esc(v.date)+'</span>'+
@@ -495,7 +511,7 @@ async function saveVisit(id){
   });
   await persist();
   delete pendingStockout[id];
-  render();
+  render();updateSummary();
   document.getElementById('st-'+id).classList.add('open');
   toast('已儲存');
 }
@@ -545,7 +561,17 @@ async function removeStore(id){
   if(!confirm('移除「'+s.name+'」?其拜訪紀錄會一併刪除。'))return;
   state.stores=state.stores.filter(x=>x.id!==id);
   state.visits=state.visits.filter(v=>v.storeId!==id);
-  await persist();render();toast('已移除');
+  await persist();render();updateSummary();toast('已移除');
+}
+function updateSummary(){
+  const el=document.getElementById('summaryBar');
+  const needVisit=state.stores.filter(s=>{const lv=lastVisit(s.id);return !lv||dayDiff(lv.date,today())>30;}).length;
+  const redSp=state.samples.filter(s=>!s.done&&s.priority==='red').length;
+  const overdue=state.todos.filter(t=>!t.done&&t.due&&t.due<today()).length;
+  el.innerHTML=
+    '<button class="chipbtn'+(needVisit?' hot':'')+'" onclick="switchTab(\'stores\')">待拜訪 <b>'+needVisit+'</b></button>'+
+    '<button class="chipbtn'+(redSp?' hot':'')+'" onclick="switchTab(\'samples\')">緊急試用品 <b>'+redSp+'</b></button>'+
+    '<button class="chipbtn'+(overdue?' hot':'')+'" onclick="switchTab(\'todos\')">逾期待辦 <b>'+overdue+'</b></button>';
 }
 function switchTab(t){
   ['stores','notes','todos','samples','backup'].forEach(x=>{
@@ -594,7 +620,10 @@ function renderSamples(){
   const done=state.samples.filter(s=>s.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
   let h='';
   if(open.length){h+='<div class="sec-label">待配送('+open.length+')</div>'+open.map(sampleRow).join('');}
-  if(done.length){h+='<div class="sec-label">已送達</div>'+done.map(sampleRow).join('');}
+  if(done.length){
+    h+='<div class="sec-label clk" onclick="flipDone(\'samples\')">已送達('+done.length+') '+(showDoneSamples?'▾':'▸')+'</div>';
+    if(showDoneSamples)h+=done.map(sampleRow).join('');
+  }
   el.innerHTML=h;
 }
 function sampleRow(s){
@@ -602,6 +631,7 @@ function sampleRow(s){
     '<input type="checkbox" '+(s.done?'checked':'')+' onchange="toggleSample(\''+s.id+'\')">'+
     '<div class="s-body"><div class="s-store">'+PR[s.priority].t.slice(-2)+' '+(s.channel?esc(s.channel)+'-':'')+esc(s.store)+'</div>'+
     '<div class="s-items">'+esc(sampleItems(s))+(s.done&&s.doneDate?' · 送達 '+esc(s.doneDate):'')+'</div></div>'+
+    '<button class="item-del" onclick="editSample(\''+s.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteSample(\''+s.id+'\')">刪除</button></div>';
 }
 async function saveSample(){
@@ -634,19 +664,29 @@ async function saveSample(){
   ['sp-complete-q','sp-haud-q','sp-other-q'].forEach(i=>{const e=document.getElementById(i);e.value=1;e.style.display='none';});
   document.getElementById('sp-othertext').value='';
   document.getElementById('sp-othertext').style.display='none';
-  renderSamples();render();toast('已加入配送清單');
+  renderSamples();render();updateSummary();toast('已加入配送清單');
 }
 async function toggleSample(id){
   const s=state.samples.find(x=>x.id===id);
   if(!s)return;
   s.done=!s.done;
   s.doneDate=s.done?today():'';
-  await persist();renderSamples();render();
+  await persist();renderSamples();render();updateSummary();
+}
+async function editSample(id){
+  const s=state.samples.find(x=>x.id===id);
+  if(!s)return;
+  const nt=prompt('修改門市名稱:',s.store);
+  if(nt===null)return;
+  const v=nt.trim();
+  if(!v){toast('名稱不可為空,未修改');return;}
+  s.store=v;
+  await persist();renderSamples();render();toast('已修改');
 }
 async function deleteSample(id){
   if(!confirm('刪除這筆試用品配送?'))return;
   state.samples=state.samples.filter(x=>x.id!==id);
-  await persist();renderSamples();render();toast('已刪除');
+  await persist();renderSamples();render();updateSummary();toast('已刪除');
 }
 
 /* ---- 備份 / 還原 ---- */
@@ -702,7 +742,7 @@ async function importBackup(){
   if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋,無法復原。'))return;
   state=data;
   await persist();
-  render();renderNotes();renderTodos();renderSamples();updateBackupInfo();
+  render();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();
   document.getElementById('bk-in').value='';
   toast('還原完成');
 }
@@ -715,6 +755,7 @@ function renderNotes(){
   el.innerHTML=ns.map(n=>
     '<div class="note-item">'+
     '<button class="item-del" onclick="deleteNote(\''+n.id+'\')">刪除</button>'+
+    '<button class="item-del" onclick="editNote(\''+n.id+'\')">修改</button>'+
     '<div class="n-meta">'+esc(n.date)+(n.store?' · <span class="n-store">'+esc(n.store)+'</span>':'')+'</div>'+
     esc(n.text)+'</div>').join('');
 }
@@ -728,6 +769,16 @@ async function saveNote(){
   document.getElementById('qn-store').value='';
   renderNotes();toast('已存入');
 }
+async function editNote(id){
+  const n=state.notes.find(x=>x.id===id);
+  if(!n)return;
+  const nt=prompt('修改隨手記內容:',n.text);
+  if(nt===null)return;
+  const v=nt.trim();
+  if(!v){toast('內容不可為空,未修改');return;}
+  n.text=v;
+  await persist();renderNotes();toast('已修改');
+}
 async function deleteNote(id){
   if(!confirm('刪除這則隨手記?'))return;
   state.notes=state.notes.filter(x=>x.id!==id);
@@ -735,6 +786,11 @@ async function deleteNote(id){
 }
 
 /* ---- 追蹤待辦 ---- */
+let showDoneTodos=false,showDoneSamples=false;
+function flipDone(which){
+  if(which==='todos'){showDoneTodos=!showDoneTodos;renderTodos();}
+  else{showDoneSamples=!showDoneSamples;renderSamples();}
+}
 let pendingCat='Client';
 function setCat(c){
   pendingCat=c;
@@ -752,7 +808,10 @@ function renderTodos(){
     const done=list.filter(t=>t.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
     h+='<div class="cat-label">'+cat+'('+open.length+')</div>';
     if(open.length){h+='<div class="sec-label">進行中</div>'+open.map(t=>todoRow(t)).join('');}
-    if(done.length){h+='<div class="sec-label">已完成</div>'+done.map(t=>todoRow(t)).join('');}
+    if(done.length){
+      h+='<div class="sec-label clk" onclick="flipDone(\'todos\')">已完成('+done.length+') '+(showDoneTodos?'▾':'▸')+'</div>';
+      if(showDoneTodos)h+=done.map(t=>todoRow(t)).join('');
+    }
   });
   el.innerHTML=h;
 }
@@ -760,7 +819,7 @@ function todoRow(t){
   return '<div class="todo-item'+(t.done?' done':'')+'">'+
     '<input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleTodo(\''+t.id+'\')">'+
     '<div class="t-text"><span class="t-cat" onclick="swapCat(\''+t.id+'\')">'+esc(t.cat||'Client')+'</span>'+esc(t.text)+
-    (t.due?'<div class="t-due">期限 '+esc(t.due)+'</div>':'')+'</div>'+
+    (t.due?'<div class="t-due'+(!t.done&&t.due<today()?' over':'')+'">'+(!t.done&&t.due<today()?'已逾期 ':'期限 ')+esc(t.due)+'</div>':'')+'</div>'+
     '<button class="item-del" onclick="editTodo(\''+t.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteTodo(\''+t.id+'\')">刪除</button></div>';
 }
@@ -788,19 +847,19 @@ async function saveTodo(){
   await persist();
   document.getElementById('qt-text').value='';
   document.getElementById('qt-due').value='';
-  renderTodos();toast('已加入');
+  renderTodos();updateSummary();toast('已加入');
 }
 async function toggleTodo(id){
   const t=state.todos.find(x=>x.id===id);
   if(!t)return;
   t.done=!t.done;
   t.doneDate=t.done?today():'';
-  await persist();renderTodos();
+  await persist();renderTodos();updateSummary();
 }
 async function deleteTodo(id){
   if(!confirm('刪除這個追蹤事項?'))return;
   state.todos=state.todos.filter(x=>x.id!==id);
-  await persist();renderTodos();toast('已刪除');
+  await persist();renderTodos();updateSummary();toast('已刪除');
 }
 
 function openReport(){
