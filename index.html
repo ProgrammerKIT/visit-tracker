@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.6</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.6.1</p>
 </header>
 
 <div class="wrap">
@@ -643,8 +643,8 @@ async function removeStore(id){
 function renderFocus(){
   const el=document.getElementById('focusBar');
   const m=Number(today().slice(5,7));
-  if(state.focus){el.className='focusbar';el.textContent='🎯 '+m+'月重點:'+state.focus;}
-  else{el.className='focusbar unset';el.textContent='🎯 點此設定本月重點方向';}
+  if(state.focus){el.className='focusbar';el.textContent='🌟 '+m+'月重點:'+state.focus;}
+  else{el.className='focusbar unset';el.textContent='🌟 點此設定本月重點方向';}
 }
 async function editFocus(){
   const nt=prompt('本月重點方向(簡短幾個字):',state.focus||'');
