@@ -157,6 +157,8 @@
   .todo-item.done .t-text{color:var(--sub);text-decoration:line-through;}
   .t-due{font-size:12px;color:var(--sub);font-weight:600;margin-top:2px;}
   .t-due.over{color:var(--alert);font-weight:800;}
+  .t-due.tdy{color:#D97706;font-weight:800;}
+  .summary .chipbtn.warm{border-color:#D97706;color:#D97706;}
   .todo-item.done .t-due{color:var(--sub);font-weight:600;}
   .sec-label{font-size:13px;color:var(--sub);font-weight:700;letter-spacing:1px;margin:14px 0 8px;}
   .cat-label{
@@ -208,7 +210,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.2.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.3</p>
 </header>
 
 <div class="wrap">
@@ -418,6 +420,8 @@ async function load(){
   if(days>=7)setTimeout(()=>toast(state.lastBackup?'距上次備份已'+days+'天,建議到「備份」分頁備份':'尚未備份過,建議到「備份」分頁備份'),800);
   const od=state.samples.filter(s=>!s.done&&s.priority==='red'&&dayDiff(s.created,today())>=3).length;
   if(od)setTimeout(()=>toast('⚠ '+od+' 筆緊急試用品超過3天未送達'),2800);
+  const dt=state.todos.filter(t=>!t.done&&t.due===today()).length;
+  if(dt)setTimeout(()=>toast('⏰ 今天有 '+dt+' 件待辦到期,今日必須完成'),1800);
 }
 async function persist(){
   const payload=JSON.stringify(state);
@@ -588,7 +592,9 @@ function updateSummary(){
   const needVisit=state.stores.filter(s=>{const lv=lastVisit(s.id);return !lv||dayDiff(lv.date,today())>30;}).length;
   const redSp=state.samples.filter(s=>!s.done&&s.priority==='red').length;
   const overdue=state.todos.filter(t=>!t.done&&t.due&&t.due<today()).length;
+  const dueToday=state.todos.filter(t=>!t.done&&t.due===today()).length;
   el.innerHTML=
+    (dueToday?'<button class="chipbtn warm" onclick="switchTab(\'todos\')">⏰今日到期 <b>'+dueToday+'</b></button>':'')+
     '<button class="chipbtn'+(needVisit?' hot':'')+'" onclick="switchTab(\'stores\')">待拜訪 <b>'+needVisit+'</b></button>'+
     '<button class="chipbtn'+(redSp?' hot':'')+'" onclick="switchTab(\'samples\')">緊急試用品 <b>'+redSp+'</b></button>'+
     '<button class="chipbtn'+(overdue?' hot':'')+'" onclick="switchTab(\'todos\')">逾期待辦 <b>'+overdue+'</b></button>';
@@ -846,7 +852,7 @@ function todoRow(t){
   return '<div class="todo-item'+(t.done?' done':'')+'">'+
     '<input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleTodo(\''+t.id+'\')">'+
     '<div class="t-text"><span class="t-cat" onclick="swapCat(\''+t.id+'\')">'+esc(t.cat||'Client')+'</span>'+esc(t.text)+
-    (t.due?'<div class="t-due'+(!t.done&&t.due<today()?' over':'')+'">'+(!t.done&&t.due<today()?'已逾期 ':'期限 ')+esc(t.due)+'</div>':'')+'</div>'+
+    (t.due?'<div class="t-due'+(!t.done&&t.due<today()?' over':(!t.done&&t.due===today()?' tdy':''))+'">'+(!t.done&&t.due<today()?'已逾期 ':(!t.done&&t.due===today()?'⏰ 今日到期 ':'期限 '))+esc(t.due)+'</div>':'')+'</div>'+
     '<button class="item-del" onclick="editTodo(\''+t.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteTodo(\''+t.id+'\')">刪除</button></div>';
 }
