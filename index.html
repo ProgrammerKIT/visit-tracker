@@ -217,7 +217,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.5</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.5.1</p>
 </header>
 
 <div class="wrap">
@@ -637,7 +637,9 @@ function updateSummary(){
   const redSp=state.samples.filter(s=>!s.done&&s.priority==='red').length;
   const overdue=state.todos.filter(t=>!t.done&&t.due&&t.due<today()).length;
   const dueToday=state.todos.filter(t=>!t.done&&t.due===today()).length;
+  const mvT=state.monthly.length,mvD=state.monthly.filter(m=>m.done).length;
   el.innerHTML=
+    (mvT?'<button class="chipbtn" onclick="switchTab(\'monthly\')">月拜 <b>'+mvD+'/'+mvT+'</b></button>':'')+
     (dueToday?'<button class="chipbtn warm" onclick="switchTab(\'todos\')">⏰今日到期 <b>'+dueToday+'</b></button>':'')+
     '<button class="chipbtn'+(needVisit?' hot':'')+'" onclick="switchTab(\'stores\')">待拜訪 <b>'+needVisit+'</b></button>'+
     '<button class="chipbtn'+(redSp?' hot':'')+'" onclick="switchTab(\'samples\')">緊急試用品 <b>'+redSp+'</b></button>'+
@@ -878,7 +880,7 @@ async function toggleMonthly(id){
   if(!m)return;
   m.done=!m.done;
   m.doneDate=m.done?today():'';
-  await persist();renderMonthly();
+  await persist();renderMonthly();updateSummary();
 }
 async function editMonthly(id){
   const m=state.monthly.find(x=>x.id===id);
