@@ -217,7 +217,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.5.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.5.2</p>
 </header>
 
 <div class="wrap">
@@ -240,7 +240,9 @@
   </div>
 
   <div class="pane" id="pane-monthly">
-    <div class="quickform">
+    <div id="monthlyList"></div>
+    <div class="quickform" style="margin-top:16px;">
+      <div class="sec-label" style="margin-top:0">新增每月必訪</div>
       <div class="field"><label>連鎖體系</label><select id="mv-channel">
         <option value="大樹">大樹</option><option value="佑全">佑全</option>
       </select></div>
@@ -249,7 +251,6 @@
       <div class="field"><label>原因注記</label><textarea id="mv-reason" placeholder="例:區域指標店,店長關係維護"></textarea></div>
       <button class="btn primary" style="width:100%" onclick="saveMonthly()">加入每月必訪</button>
     </div>
-    <div id="monthlyList"></div>
   </div>
 
   <div class="pane" id="pane-notes">
