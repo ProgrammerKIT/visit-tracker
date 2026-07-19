@@ -133,7 +133,7 @@
 
   .tabs{display:flex;border-bottom:2px solid var(--line);margin-bottom:16px;}
   .tabs button{
-    flex:1;padding:12px 0;font-size:15px;font-weight:600;background:none;border:none;
+    flex:1;padding:12px 0;font-size:13.5px;font-weight:600;background:none;border:none;
     color:var(--sub);font-family:inherit;cursor:pointer;border-bottom:3px solid transparent;
     margin-bottom:-2px;
   }
@@ -210,13 +210,14 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.3.2</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.4</p>
 </header>
 
 <div class="wrap">
   <div id="summaryBar" class="summary"></div>
   <div class="tabs">
     <button id="tab-stores" class="on" onclick="switchTab('stores')">警示店</button>
+    <button id="tab-monthly" onclick="switchTab('monthly')">月拜</button>
     <button id="tab-notes" onclick="switchTab('notes')">隨手記</button>
     <button id="tab-todos" onclick="switchTab('todos')">待辦</button>
     <button id="tab-samples" onclick="switchTab('samples')">試用品</button>
@@ -229,6 +230,18 @@
       <button class="btn" onclick="openReport()">產出回報文字</button>
     </div>
     <div id="storeList"></div>
+  </div>
+
+  <div class="pane" id="pane-monthly">
+    <div class="quickform">
+      <div class="field"><label>連鎖體系</label><select id="mv-channel">
+        <option value="大樹">大樹</option><option value="佑全">佑全</option>
+      </select></div>
+      <div class="field"><label>門市名稱</label><input type="text" id="mv-store" placeholder="例:板橋文化"></div>
+      <div class="field"><label>原因注記</label><textarea id="mv-reason" placeholder="例:區域指標店,店長關係維護"></textarea></div>
+      <button class="btn primary" style="width:100%" onclick="saveMonthly()">加入每月必訪</button>
+    </div>
+    <div id="monthlyList"></div>
   </div>
 
   <div class="pane" id="pane-notes">
@@ -346,6 +359,8 @@ function migrate(s){
   ['佑全','躍獅','其他'].forEach(c=>{if(!s.channels.includes(c))s.channels.push(c);});
   s.todos.forEach(t=>{if(!t.cat)t.cat='Client';});
   if(!s.samples)s.samples=[];
+  if(!s.monthly)s.monthly=[];
+  if(!s.monthlyMonth)s.monthlyMonth='';
   s.stores.forEach(st=>{if(!st.channel)st.channel='大樹';});
   return s;
 }
@@ -396,7 +411,13 @@ async function load(){
     state=migrate(SEED);
     try{await persist();}catch(err){console.error(err);}
   }
-  render();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();
+  const cm=today().slice(0,7);
+  if(state.monthlyMonth!==cm){
+    state.monthly.forEach(m=>{m.done=false;m.doneDate='';});
+    state.monthlyMonth=cm;
+    await persist();
+  }
+  render();renderMonthly();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
     document.getElementById('sp-other-q').style.display=e.target.checked?'inline-block':'none';
@@ -594,7 +615,7 @@ function updateSummary(){
     '<button class="chipbtn'+(overdue?' hot':'')+'" onclick="switchTab(\'todos\')">逾期待辦 <b>'+overdue+'</b></button>';
 }
 function switchTab(t){
-  ['stores','notes','todos','samples','backup'].forEach(x=>{
+  ['stores','monthly','notes','todos','samples','backup'].forEach(x=>{
     document.getElementById('tab-'+x).classList.toggle('on',x===t);
     document.getElementById('pane-'+x).classList.toggle('on',x===t);
   });
@@ -722,8 +743,8 @@ function b64e(s){return btoa(unescape(encodeURIComponent(s)));}
 function b64d(s){return decodeURIComponent(escape(atob(s)));}
 function updateBackupInfo(){
   const el=document.getElementById('backupInfo');
-  const c={stores:state.stores.length,visits:state.visits.length,notes:state.notes.length,todos:state.todos.length,samples:state.samples.length};
-  let line='目前資料:警示店 '+c.stores+' · 拜訪 '+c.visits+' · 隨手記 '+c.notes+' · 待辦 '+c.todos+' · 試用品 '+c.samples+'<br>';
+  const c={stores:state.stores.length,visits:state.visits.length,notes:state.notes.length,todos:state.todos.length,samples:state.samples.length,monthly:state.monthly.length};
+  let line='目前資料:警示店 '+c.stores+' · 拜訪 '+c.visits+' · 隨手記 '+c.notes+' · 待辦 '+c.todos+' · 試用品 '+c.samples+' · 月拜 '+c.monthly+'<br>';
   if(state.lastBackup){
     const days=Math.floor((new Date(today())-new Date(state.lastBackup))/86400000);
     line+='上次備份:'+state.lastBackup+'(距今 '+days+' 天)';
@@ -769,9 +790,69 @@ async function importBackup(){
   if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋,無法復原。'))return;
   state=data;
   await persist();
-  render();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();
+  render();renderMonthly();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();
   document.getElementById('bk-in').value='';
   toast('還原完成');
+}
+
+/* ---- 每月必訪 ---- */
+function renderMonthly(){
+  const el=document.getElementById('monthlyList');
+  if(!state.monthly.length){el.innerHTML='<div class="empty">尚無每月必訪門市。新增後,每月1日自動重置勾選,開始新一輪。</div>';return;}
+  let h2='<div class="sec-label">本月循環:'+state.monthlyMonth+'(每月1日自動重置)</div>';
+  ['大樹','佑全'].forEach(ch=>{
+    const list=state.monthly.filter(m=>m.channel===ch);
+    if(!list.length)return;
+    const open=list.filter(m=>!m.done);
+    const done=list.filter(m=>m.done).sort((a,b)=>(a.doneDate||'').localeCompare(b.doneDate||''));
+    h2+='<div class="cat-label">'+ch+'('+done.length+'/'+list.length+')</div>';
+    open.forEach(m=>{h2+=monthlyRow(m);});
+    done.forEach(m=>{h2+=monthlyRow(m);});
+  });
+  el.innerHTML=h2;
+}
+function monthlyRow(m){
+  return '<div class="todo-item'+(m.done?' done':'')+'">'+
+    '<input type="checkbox" '+(m.done?'checked':'')+' onchange="toggleMonthly(\''+m.id+'\')">'+
+    '<div class="t-text">'+esc(m.store)+
+    (m.reason?'<div class="s-items">'+esc(m.reason)+'</div>':'')+
+    (m.done&&m.doneDate?'<div class="s-items">本月已訪 '+esc(m.doneDate)+'</div>':'')+'</div>'+
+    '<button class="item-del" onclick="editMonthly(\''+m.id+'\')">修改</button>'+
+    '<button class="item-del" onclick="deleteMonthly(\''+m.id+'\')">刪除</button></div>';
+}
+async function saveMonthly(){
+  const store2=document.getElementById('mv-store').value.trim();
+  if(!store2){toast('請輸入門市名稱');return;}
+  state.monthly.push({id:'m'+Date.now(),channel:document.getElementById('mv-channel').value,
+    store:store2,reason:document.getElementById('mv-reason').value.trim(),
+    created:today(),done:false,doneDate:''});
+  await persist();
+  document.getElementById('mv-store').value='';
+  document.getElementById('mv-reason').value='';
+  renderMonthly();toast('已加入每月必訪');
+}
+async function toggleMonthly(id){
+  const m=state.monthly.find(x=>x.id===id);
+  if(!m)return;
+  m.done=!m.done;
+  m.doneDate=m.done?today():'';
+  await persist();renderMonthly();
+}
+async function editMonthly(id){
+  const m=state.monthly.find(x=>x.id===id);
+  if(!m)return;
+  const ns2=prompt('修改門市名稱:',m.store);
+  if(ns2===null)return;
+  if(ns2.trim())m.store=ns2.trim();
+  const nr=prompt('修改原因注記:',m.reason||'');
+  if(nr!==null)m.reason=nr.trim();
+  await persist();renderMonthly();toast('已修改');
+}
+async function deleteMonthly(id){
+  const m=state.monthly.find(x=>x.id===id);
+  if(!confirm('刪除每月必訪「'+(m?m.store:'')+'」?'))return;
+  state.monthly=state.monthly.filter(x=>x.id!==id);
+  await persist();renderMonthly();toast('已刪除');
 }
 
 /* ---- 隨手記 ---- */
@@ -922,6 +1003,18 @@ function buildReport(){
     out+='\n';
     });
   });
+  if(state.monthly.length){
+    out+='【每月必訪 · '+state.monthlyMonth+'】\n';
+    ['大樹','佑全'].forEach(ch=>{
+      const list=state.monthly.filter(m=>m.channel===ch);
+      if(!list.length)return;
+      const done2=list.filter(m=>m.done);
+      out+='('+ch+' '+done2.length+'/'+list.length+')\n';
+      list.filter(m=>!m.done).forEach(m=>{out+='- [未訪] '+m.store+(m.reason?'('+m.reason+')':'')+'\n';});
+      done2.forEach(m=>{out+='- [已訪 '+m.doneDate+'] '+m.store+'\n';});
+    });
+    out+='\n';
+  }
   const noteScope=state.notes.filter(n=>{
     if(!inRange(n.date))return false;
     if(pick==='__all__')return true;
