@@ -210,7 +210,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.3</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.3.1</p>
 </header>
 
 <div class="wrap">
@@ -420,8 +420,6 @@ async function load(){
   if(days>=7)setTimeout(()=>toast(state.lastBackup?'距上次備份已'+days+'天,建議到「備份」分頁備份':'尚未備份過,建議到「備份」分頁備份'),800);
   const od=state.samples.filter(s=>!s.done&&s.priority==='red'&&dayDiff(s.created,today())>=3).length;
   if(od)setTimeout(()=>toast('⚠ '+od+' 筆緊急試用品超過3天未送達'),2800);
-  const dt=state.todos.filter(t=>!t.done&&t.due===today()).length;
-  if(dt)setTimeout(()=>toast('⏰ 今天有 '+dt+' 件待辦到期,今日必須完成'),1800);
 }
 async function persist(){
   const payload=JSON.stringify(state);
