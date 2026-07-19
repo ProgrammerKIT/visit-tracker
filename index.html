@@ -191,6 +191,13 @@
   .summary .chipbtn b{font-size:15px;}
   .summary .chipbtn.hot{border-color:var(--alert);color:var(--alert);}
   .sec-label.clk{cursor:pointer;user-select:none;}
+  .mv-dot{display:inline-block;width:10px;height:10px;margin-right:7px;vertical-align:baseline;}
+  .mv-tree{border-left:4px solid var(--ok);}
+  .mv-tree .mv-dot{background:var(--ok);}
+  .mv-yc{border-left:4px solid #E6A817;}
+  .mv-yc .mv-dot{background:#E6A817;}
+  .mv-legend{font-size:12.5px;color:var(--sub);margin-bottom:10px;}
+  .mv-legend .mv-dot{width:9px;height:9px;}
   .chk{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;}
   .chk input{width:20px;height:20px;accent-color:var(--alcon);}
   .seg button.sel-pr-red{background:var(--alert);color:#fff;font-weight:700;}
@@ -210,7 +217,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.4</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.5</p>
 </header>
 
 <div class="wrap">
@@ -237,6 +244,7 @@
       <div class="field"><label>連鎖體系</label><select id="mv-channel">
         <option value="大樹">大樹</option><option value="佑全">佑全</option>
       </select></div>
+      <div class="field"><label>行政區</label><input type="text" id="mv-district" list="mv-districts" placeholder="例:中山區"><datalist id="mv-districts"></datalist></div>
       <div class="field"><label>門市名稱</label><input type="text" id="mv-store" placeholder="例:板橋文化"></div>
       <div class="field"><label>原因注記</label><textarea id="mv-reason" placeholder="例:區域指標店,店長關係維護"></textarea></div>
       <button class="btn primary" style="width:100%" onclick="saveMonthly()">加入每月必訪</button>
@@ -361,6 +369,27 @@ function migrate(s){
   if(!s.samples)s.samples=[];
   if(!s.monthly)s.monthly=[];
   if(!s.monthlyMonth)s.monthlyMonth='';
+  s.monthly.forEach(m=>{if(!m.district)m.district='未分區';});
+  if(!s.monthlySeeded){
+    const SEEDMV=[
+      ['大同區','大同雙連店','大樹'],
+      ['中山區','中山吉林店','大樹'],['中山區','台北龍江店','大樹'],['中山區','中山明水店','大樹'],['中山區','中山龍江二','佑全'],
+      ['大安區','大安羅斯福','佑全'],['大安區','大安健康人生','佑全'],
+      ['信義區','信義市政店','大樹'],['信義區','信義吳興','佑全'],
+      ['文山區','文山景美店','大樹'],['文山區','文山興隆','佑全'],
+      ['中和區','中和四維店','大樹'],['中和區','中和景新店','大樹'],
+      ['永和區','永和福和店','大樹'],['永和區','康和','佑全'],['永和區','永和中山','佑全'],
+      ['淡水區','淡水淡金','佑全'],['淡水區','淡水新市一','佑全'],
+      ['蘆洲區','蘆洲長榮店','大樹'],
+      ['新莊區','新莊幸福店','大樹'],
+      ['樹林區','樹林育英店','大樹']
+    ];
+    SEEDMV.forEach((x,i)=>{
+      if(!s.monthly.some(m=>m.store===x[1]))
+        s.monthly.push({id:'mv'+i+'_'+Date.now(),district:x[0],store:x[1],channel:x[2],reason:'',created:'2026-07-19',done:false,doneDate:''});
+    });
+    s.monthlySeeded=true;
+  }
   s.stores.forEach(st=>{if(!st.channel)st.channel='大樹';});
   return s;
 }
@@ -799,24 +828,35 @@ async function importBackup(){
 function renderMonthly(){
   const el=document.getElementById('monthlyList');
   if(!state.monthly.length){el.innerHTML='<div class="empty">尚無每月必訪門市。新增後,每月1日自動重置勾選,開始新一輪。</div>';return;}
-  let h2='<div class="sec-label">本月循環:'+state.monthlyMonth+'(每月1日自動重置)</div>';
-  ['大樹','佑全'].forEach(ch=>{
-    const list=state.monthly.filter(m=>m.channel===ch);
-    if(!list.length)return;
-    const open=list.filter(m=>!m.done);
-    const done=list.filter(m=>m.done).sort((a,b)=>(a.doneDate||'').localeCompare(b.doneDate||''));
-    h2+='<div class="cat-label">'+ch+'('+done.length+'/'+list.length+')</div>';
-    open.forEach(m=>{h2+=monthlyRow(m);});
-    done.forEach(m=>{h2+=monthlyRow(m);});
+  const dl=document.getElementById('mv-districts');
+  const districts=[];
+  state.monthly.forEach(m=>{if(!districts.includes(m.district))districts.push(m.district);});
+  if(dl)dl.innerHTML=districts.map(d=>'<option value="'+esc(d)+'">').join('');
+  const total=state.monthly.length,doneAll=state.monthly.filter(m=>m.done);
+  const tT=state.monthly.filter(m=>m.channel==='大樹'),tY=state.monthly.filter(m=>m.channel==='佑全');
+  let h2='<div class="sec-label">本月循環:'+state.monthlyMonth+' · 進度 '+doneAll.length+'/'+total+'(每月1日自動重置)</div>'+
+    '<div class="mv-legend"><span class="mv-dot" style="background:var(--ok)"></span>大樹 '+tT.filter(m=>m.done).length+'/'+tT.length+
+    '  <span class="mv-dot" style="background:#E6A817;margin-left:14px"></span>佑全 '+tY.filter(m=>m.done).length+'/'+tY.length+'</div>';
+  districts.forEach(d=>{
+    const open=state.monthly.filter(m=>m.district===d&&!m.done);
+    if(!open.length)return;
+    h2+='<div class="sec-label">'+esc(d)+'</div>';
+    open.forEach(m=>{h2+=monthlyRow(m,false);});
   });
+  const done=doneAll.sort((a,b)=>(a.doneDate||'').localeCompare(b.doneDate||''));
+  if(done.length){
+    h2+='<div class="cat-label">✅ 當月已完成拜訪('+done.length+')</div>';
+    done.forEach(m=>{h2+=monthlyRow(m,true);});
+  }
   el.innerHTML=h2;
 }
-function monthlyRow(m){
-  return '<div class="todo-item'+(m.done?' done':'')+'">'+
+function monthlyRow(m,showDist){
+  const cls=m.channel==='大樹'?'mv-tree':'mv-yc';
+  return '<div class="todo-item '+cls+(m.done?' done':'')+'">'+
     '<input type="checkbox" '+(m.done?'checked':'')+' onchange="toggleMonthly(\''+m.id+'\')">'+
-    '<div class="t-text">'+esc(m.store)+
-    (m.reason?'<div class="s-items">'+esc(m.reason)+'</div>':'')+
-    (m.done&&m.doneDate?'<div class="s-items">本月已訪 '+esc(m.doneDate)+'</div>':'')+'</div>'+
+    '<div class="t-text"><span class="mv-dot"></span>'+esc(m.store)+
+    (showDist?'<div class="s-items">'+esc(m.district)+(m.doneDate?' · 已訪 '+esc(m.doneDate):'')+'</div>':
+      (m.reason?'<div class="s-items">'+esc(m.reason)+'</div>':''))+'</div>'+
     '<button class="item-del" onclick="editMonthly(\''+m.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteMonthly(\''+m.id+'\')">刪除</button></div>';
 }
@@ -824,10 +864,12 @@ async function saveMonthly(){
   const store2=document.getElementById('mv-store').value.trim();
   if(!store2){toast('請輸入門市名稱');return;}
   state.monthly.push({id:'m'+Date.now(),channel:document.getElementById('mv-channel').value,
+    district:document.getElementById('mv-district').value.trim()||'未分區',
     store:store2,reason:document.getElementById('mv-reason').value.trim(),
     created:today(),done:false,doneDate:''});
   await persist();
   document.getElementById('mv-store').value='';
+  document.getElementById('mv-district').value='';
   document.getElementById('mv-reason').value='';
   renderMonthly();toast('已加入每月必訪');
 }
@@ -1010,8 +1052,8 @@ function buildReport(){
       if(!list.length)return;
       const done2=list.filter(m=>m.done);
       out+='('+ch+' '+done2.length+'/'+list.length+')\n';
-      list.filter(m=>!m.done).forEach(m=>{out+='- [未訪] '+m.store+(m.reason?'('+m.reason+')':'')+'\n';});
-      done2.forEach(m=>{out+='- [已訪 '+m.doneDate+'] '+m.store+'\n';});
+      list.filter(m=>!m.done).forEach(m=>{out+='- [未訪] '+m.district+' '+m.store+(m.reason?'('+m.reason+')':'')+'\n';});
+      done2.forEach(m=>{out+='- [已訪 '+m.doneDate+'] '+m.district+' '+m.store+'\n';});
     });
     out+='\n';
   }
