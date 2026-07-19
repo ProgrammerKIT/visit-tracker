@@ -206,7 +206,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 試用品 · 備份 · v2.2</p>
 </header>
 
 <div class="wrap">
@@ -259,6 +259,11 @@
       <div class="field"><label>試用品品項(可複選,附數量)</label>
         <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-complete"> Complete</label><input type="number" class="qty" id="sp-complete-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
         <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-haud"> HAUD</label><input type="number" class="qty" id="sp-haud-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
+        <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-display"> 陳列盒</label></div>
+        <div id="sp-display-opts" style="display:none;padding-left:26px;">
+          <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-d15"> 15cm</label><input type="number" class="qty" id="sp-d15-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
+          <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-d30"> 30cm</label><input type="number" class="qty" id="sp-d30-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
+        </div>
         <div class="itemrow"><label class="chk"><input type="checkbox" id="sp-otherchk"> 其他</label><input type="number" class="qty" id="sp-other-q" value="1" min="1" inputmode="numeric" style="display:none"></div>
         <input type="text" id="sp-othertext" placeholder="其他品項內容" style="margin-top:8px;display:none;">
       </div>
@@ -397,6 +402,15 @@ async function load(){
   });
   document.getElementById('sp-haud').addEventListener('change',e=>{
     document.getElementById('sp-haud-q').style.display=e.target.checked?'inline-block':'none';
+  });
+  document.getElementById('sp-display').addEventListener('change',e=>{
+    document.getElementById('sp-display-opts').style.display=e.target.checked?'block':'none';
+  });
+  document.getElementById('sp-d15').addEventListener('change',e=>{
+    document.getElementById('sp-d15-q').style.display=e.target.checked?'inline-block':'none';
+  });
+  document.getElementById('sp-d30').addEventListener('change',e=>{
+    document.getElementById('sp-d30-q').style.display=e.target.checked?'inline-block':'none';
   });
   const days=state.lastBackup?Math.floor((new Date(today())-new Date(state.lastBackup))/86400000):999;
   if(days>=7)setTimeout(()=>toast(state.lastBackup?'距上次備份已'+days+'天,建議到「備份」分頁備份':'尚未備份過,建議到「備份」分頁備份'),800);
@@ -650,6 +664,12 @@ async function saveSample(){
   const q=id=>Math.max(1,Number(document.getElementById(id).value)||1);
   if(document.getElementById('sp-complete').checked)items.push({n:'Complete',q:q('sp-complete-q')});
   if(document.getElementById('sp-haud').checked)items.push({n:'HAUD',q:q('sp-haud-q')});
+  if(document.getElementById('sp-display').checked){
+    const d15=document.getElementById('sp-d15').checked,d30=document.getElementById('sp-d30').checked;
+    if(!d15&&!d30){toast('勾了「陳列盒」請選擇15cm或30cm');return;}
+    if(d15)items.push({n:'陳列盒15cm',q:q('sp-d15-q')});
+    if(d30)items.push({n:'陳列盒30cm',q:q('sp-d30-q')});
+  }
   let other='';
   if(document.getElementById('sp-otherchk').checked){
     const ot=document.getElementById('sp-othertext').value.trim();
@@ -664,8 +684,9 @@ async function saveSample(){
   document.getElementById('sp-chother').value='';
   document.getElementById('sp-chother').style.display='none';
   document.getElementById('sp-channel').selectedIndex=0;
-  ['sp-complete','sp-haud','sp-otherchk'].forEach(i=>document.getElementById(i).checked=false);
-  ['sp-complete-q','sp-haud-q','sp-other-q'].forEach(i=>{const e=document.getElementById(i);e.value=1;e.style.display='none';});
+  ['sp-complete','sp-haud','sp-otherchk','sp-display','sp-d15','sp-d30'].forEach(i=>document.getElementById(i).checked=false);
+  ['sp-complete-q','sp-haud-q','sp-other-q','sp-d15-q','sp-d30-q'].forEach(i=>{const e=document.getElementById(i);e.value=1;e.style.display='none';});
+  document.getElementById('sp-display-opts').style.display='none';
   document.getElementById('sp-othertext').value='';
   document.getElementById('sp-othertext').style.display='none';
   renderSamples();render();updateSummary();toast('已加入配送清單');
