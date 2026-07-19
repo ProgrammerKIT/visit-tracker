@@ -190,6 +190,12 @@
   }
   .summary .chipbtn b{font-size:15px;}
   .summary .chipbtn.hot{border-color:var(--alert);color:var(--alert);}
+  .focusbar{
+    border-left:4px solid var(--alcon);background:var(--panel);
+    padding:8px 11px;font-size:14px;font-weight:700;color:var(--alcon);
+    margin-bottom:12px;cursor:pointer;
+  }
+  .focusbar.unset{color:var(--sub);font-weight:600;border-left-color:var(--line);}
   .sec-label.clk{cursor:pointer;user-select:none;}
   .mv-dot{display:inline-block;width:10px;height:10px;margin-right:7px;vertical-align:baseline;}
   .mv-tree{border-left:4px solid var(--ok);}
@@ -217,11 +223,12 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.5.2</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v2.6</p>
 </header>
 
 <div class="wrap">
   <div id="summaryBar" class="summary"></div>
+  <div id="focusBar" class="focusbar" onclick="editFocus()"></div>
   <div class="tabs">
     <button id="tab-stores" class="on" onclick="switchTab('stores')">警示店</button>
     <button id="tab-monthly" onclick="switchTab('monthly')">月拜</button>
@@ -371,6 +378,7 @@ function migrate(s){
   if(!s.monthly)s.monthly=[];
   if(!s.monthlyMonth)s.monthlyMonth='';
   s.monthly.forEach(m=>{if(!m.district)m.district='未分區';});
+  if(s.focus===undefined)s.focus='';
   if(!s.monthlySeeded){
     const SEEDMV=[
       ['大同區','大同雙連店','大樹'],
@@ -447,7 +455,7 @@ async function load(){
     state.monthlyMonth=cm;
     await persist();
   }
-  render();renderMonthly();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();
+  render();renderMonthly();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();renderFocus();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
     document.getElementById('sp-other-q').style.display=e.target.checked?'inline-block':'none';
@@ -631,6 +639,18 @@ async function removeStore(id){
   state.stores=state.stores.filter(x=>x.id!==id);
   state.visits=state.visits.filter(v=>v.storeId!==id);
   await persist();render();updateSummary();toast('已移除');
+}
+function renderFocus(){
+  const el=document.getElementById('focusBar');
+  const m=Number(today().slice(5,7));
+  if(state.focus){el.className='focusbar';el.textContent='🎯 '+m+'月重點:'+state.focus;}
+  else{el.className='focusbar unset';el.textContent='🎯 點此設定本月重點方向';}
+}
+async function editFocus(){
+  const nt=prompt('本月重點方向(簡短幾個字):',state.focus||'');
+  if(nt===null)return;
+  state.focus=nt.trim();
+  await persist();renderFocus();
 }
 function updateSummary(){
   const el=document.getElementById('summaryBar');
@@ -822,7 +842,7 @@ async function importBackup(){
   if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋,無法復原。'))return;
   state=data;
   await persist();
-  render();renderMonthly();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();
+  render();renderMonthly();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();renderFocus();
   document.getElementById('bk-in').value='';
   toast('還原完成');
 }
@@ -1029,7 +1049,9 @@ function buildReport(){
   const inRange=d=>range==='all'||!d||d>=cut;
   const inScope=s=>pick==='__all__'||s.channel===pick;
   const tag=pick==='__all__'?'全部通路':pick;
-  let out='【警示店拜訪回報 · '+tag+' · '+(range==='all'?'全部歷史':'近45天')+'】產出日期:'+today()+'\n\n';
+  let out='【警示店拜訪回報 · '+tag+' · '+(range==='all'?'全部歷史':'近45天')+'】產出日期:'+today()+'\n';
+  if(state.focus)out+='本月重點方向:'+state.focus+'\n';
+  out+='\n';
   const byCh={};
   state.stores.filter(inScope).forEach(s=>{(byCh[s.channel]=byCh[s.channel]||[]).push(s);});
   Object.keys(byCh).sort().forEach(ch=>{
