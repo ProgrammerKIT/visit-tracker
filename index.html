@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.0.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.1</p>
 </header>
 
 <div class="wrap">
@@ -329,6 +329,11 @@
       <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">貼上先前的備份碼,將完整覆蓋目前所有資料。</p>
       <textarea id="bk-in" placeholder="貼上 GTBK1. 開頭的備份碼" style="width:100%;min-height:90px;font-size:11px;border:1px solid var(--line);padding:8px;font-family:monospace;"></textarea>
       <button class="btn danger" style="width:100%;margin-top:8px;" onclick="importBackup()">還原資料</button>
+    </div>
+    <div class="quickform">
+      <div class="sec-label" style="margin-top:0">緊急回溯</div>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">若資料被另一台裝置或雲端覆蓋,可回到覆蓋前的上一版。</p>
+      <button class="btn danger" style="width:100%" onclick="restoreSnapshot()">還原上一版快照</button>
     </div>
   </div>
 </div>
@@ -847,7 +852,8 @@ async function importBackup(){
   try{data=migrate(JSON.parse(b64d(m[1])));}
   catch(e){toast('備份碼解析失敗');return;}
   const c={s:data.stores.length,v:data.visits.length,n:data.notes.length,t:data.todos.length};
-  if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋,無法復原。'))return;
+  if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋。'))return;
+  saveSnapshot();
   state=data;
   await persist();
   render();renderMonthly();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();renderFocus();
@@ -1163,6 +1169,23 @@ async function setSyncKey(){
   setTimeout(()=>location.reload(),700);
 }
 function rerenderAll(){render();renderMonthly();renderNotes();renderTodos();renderSamples();updateSummary();renderFocus();}
+const SNAPKEY='gt-prev-snapshot';
+function saveSnapshot(){
+  try{localStorage.setItem(SNAPKEY,JSON.stringify({at:new Date().toISOString(),json:JSON.stringify(state)}));}catch(e){}
+}
+async function restoreSnapshot(){
+  let s;
+  try{s=JSON.parse(localStorage.getItem(SNAPKEY)||'null');}catch(e){}
+  if(!s){toast('本機沒有上一版快照');return;}
+  const d=migrate(JSON.parse(s.json));
+  if(!confirm('還原到上一版快照?\n快照時間:'+s.at.slice(0,16).replace('T',' ')+'\n內容:'+dataWeight(d)+' 筆使用紀錄\n\n目前資料將被覆蓋。'))return;
+  saveSnapshot();
+  state=d;state.ts=Date.now();
+  try{await store.set(JSON.stringify(state));}catch(e){}
+  if(fbRef)await pushCloud();
+  rerenderAll();updateBackupInfo();
+  toast('已還原上一版');
+}
 function dataWeight(s){
   return (s.visits||[]).length+(s.notes||[]).length+(s.todos||[]).length+(s.samples||[]).length+
     ((s.monthly||[]).filter(m=>m.done).length)+((s.stores||[]).length>1?(s.stores||[]).length:0)+(s.focus?1:0);
@@ -1196,6 +1219,7 @@ async function initSync(){
         useCloud=confirm('雲端與這台裝置的資料不同:\n雲端:'+cw+' 筆使用紀錄\n本機:'+lw+' 筆使用紀錄\n\n按「確定」採用雲端資料(覆蓋本機)\n按「取消」以本機資料覆蓋雲端');
       }
       if(useCloud===true){
+        saveSnapshot();
         state=cloudState;
         try{await store.set(JSON.stringify(state));}catch(e){}
         rerenderAll();
@@ -1214,11 +1238,17 @@ async function initSync(){
       if(!s.exists||s.metadata.hasPendingWrites)return;
       const d=s.data();
       if(d.by===clientId)return;
-      if((d.ts||0)>(state.ts||0)){
-        state=migrate(JSON.parse(d.json));
-        store.set(JSON.stringify(state)).catch(()=>{});
-        rerenderAll();
+      if((d.ts||0)<=(state.ts||0))return;
+      const incoming=migrate(JSON.parse(d.json));
+      const iw=dataWeight(incoming),lw=dataWeight(state);
+      if(iw+5<lw){
+        if(!confirm('另一台裝置傳來的資料明顯較少:\n對方 '+iw+' 筆 / 本機 '+lw+' 筆\n\n按「確定」接受對方資料\n按「取消」保留本機並推回雲端'))
+          {state.ts=Date.now();pushCloud();return;}
       }
+      saveSnapshot();
+      state=incoming;
+      store.set(JSON.stringify(state)).catch(()=>{});
+      rerenderAll();
     });
   }catch(e){console.error(e);syncStatus('同步連線失敗:'+(e.message||'').slice(0,60));}
 }
