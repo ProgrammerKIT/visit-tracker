@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.0</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.0.1</p>
 </header>
 
 <div class="wrap">
@@ -1163,6 +1163,10 @@ async function setSyncKey(){
   setTimeout(()=>location.reload(),700);
 }
 function rerenderAll(){render();renderMonthly();renderNotes();renderTodos();renderSamples();updateSummary();renderFocus();}
+function dataWeight(s){
+  return (s.visits||[]).length+(s.notes||[]).length+(s.todos||[]).length+(s.samples||[]).length+
+    ((s.monthly||[]).filter(m=>m.done).length)+((s.stores||[]).length>1?(s.stores||[]).length:0)+(s.focus?1:0);
+}
 async function pushCloud(){
   if(!fbRef)return;
   try{
@@ -1181,12 +1185,23 @@ async function initSync(){
     const snap=await fbRef.get();
     if(snap.exists){
       const d=snap.data();
-      if((d.ts||0)>(state.ts||0)){
-        state=migrate(JSON.parse(d.json));
+      const cloudState=migrate(JSON.parse(d.json));
+      const cw=dataWeight(cloudState),lw=dataWeight(state);
+      let useCloud;
+      if(lw===cw&&(d.ts||0)===(state.ts||0)){useCloud=null;}
+      else if(lw<=0&&cw>0){useCloud=true;}
+      else if(cw<=0&&lw>0){useCloud=false;}
+      else if(cw===lw){useCloud=(d.ts||0)>(state.ts||0);}
+      else{
+        useCloud=confirm('雲端與這台裝置的資料不同:\n雲端:'+cw+' 筆使用紀錄\n本機:'+lw+' 筆使用紀錄\n\n按「確定」採用雲端資料(覆蓋本機)\n按「取消」以本機資料覆蓋雲端');
+      }
+      if(useCloud===true){
+        state=cloudState;
         try{await store.set(JSON.stringify(state));}catch(e){}
         rerenderAll();
         if(document.getElementById('pane-backup').classList.contains('on'))updateBackupInfo();
-      }else if((state.ts||0)>(d.ts||0)){
+      }else if(useCloud===false){
+        state.ts=Date.now();
         await fbRef.set({json:JSON.stringify(state),ts:state.ts,by:clientId});
       }
     }else{
