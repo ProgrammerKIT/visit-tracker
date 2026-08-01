@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.3</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.3.1</p>
 </header>
 
 <div class="wrap">
@@ -390,6 +390,11 @@ function migrate(s){
   if(!s.monthly)s.monthly=[];
   if(!s.monthlyMonth)s.monthlyMonth='';
   if(!s.monthlyHistory)s.monthlyHistory=[];
+  if(s.monthlyHistory.length){
+    const seen={};const uniq=[];
+    for(const hm of s.monthlyHistory){if(hm&&hm.month&&!seen[hm.month]){seen[hm.month]=1;uniq.push(hm);}}
+    s.monthlyHistory=uniq;
+  }
   s.monthly.forEach(m=>{if(!m.district)m.district='未分區';});
   if(s.focus===undefined)s.focus='';
   if(!s.monthlySeeded){
@@ -886,7 +891,7 @@ function checkMonthlyReset(){
   if(done.length||state.monthly.length){
     const byCh={};
     state.monthly.forEach(m=>{byCh[m.channel]=byCh[m.channel]||{d:0,t:0};byCh[m.channel].t++;if(m.done)byCh[m.channel].d++;});
-    state.monthlyHistory.push({
+    if(!state.monthlyHistory.some(x=>x.month===prevMonth))state.monthlyHistory.push({
       month:prevMonth,
       total:state.monthly.length,
       done:done.length,
