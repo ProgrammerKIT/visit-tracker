@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.3.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.4</p>
 </header>
 
 <div class="wrap">
@@ -397,6 +397,7 @@ function migrate(s){
   }
   s.monthly.forEach(m=>{if(!m.district)m.district='未分區';});
   if(s.focus===undefined)s.focus='';
+  if(s.rev===undefined)s.rev=0;
   if(!s.monthlySeeded){
     const SEEDMV=[
       ['大同區','大同雙連店','大樹'],
@@ -491,6 +492,7 @@ async function load(){
 }
 async function persist(){
   state.ts=Date.now();
+  state.rev=(state.rev||0)+1;
   const payload=JSON.stringify(state);
   for(let i=0;i<3;i++){
     try{
@@ -1237,7 +1239,7 @@ async function restoreSnapshot(){
   const d=migrate(JSON.parse(s.json));
   if(!confirm('還原到上一版快照?\n快照時間:'+s.at.slice(0,16).replace('T',' ')+'\n內容:'+dataWeight(d)+' 筆使用紀錄\n\n目前資料將被覆蓋。'))return;
   saveSnapshot();
-  state=d;state.ts=Date.now();
+  state=d;state.ts=Date.now();state.rev=(state.rev||0)+1;
   try{await store.set(JSON.stringify(state));}catch(e){}
   if(fbRef)await pushCloud();
   rerenderAll();updateBackupInfo();
@@ -1306,7 +1308,7 @@ function dataWeight(s){
 async function pushCloud(){
   if(!fbRef)return;
   try{
-    await fbRef.set({json:JSON.stringify(state),ts:state.ts||Date.now(),by:clientId});
+    await fbRef.set({json:JSON.stringify(state),ts:state.ts||Date.now(),rev:state.rev||0,by:clientId});
     syncStatus('✓ 同步已連線(金鑰:'+getSyncKey().slice(0,6)+'...)',true);
   }catch(e){syncStatus('推送失敗,恢復連線後自動重試');}
 }
@@ -1323,13 +1325,14 @@ async function initSync(){
       const d=snap.data();
       const cloudState=migrate(JSON.parse(d.json));
       const cw=dataWeight(cloudState),lw=dataWeight(state);
+      const cRev=cloudState.rev||0,lRev=state.rev||0;
       let useCloud;
-      if(lw===cw&&(d.ts||0)===(state.ts||0)){useCloud=null;}
-      else if(lw<=0&&cw>0){useCloud=true;}
-      else if(cw<=0&&lw>0){useCloud=false;}
-      else if(cw===lw){useCloud=(d.ts||0)>(state.ts||0);}
-      else{
-        useCloud=confirm('雲端 '+cw+' 筆 vs 本機 '+lw+' 筆,差異:\n\n'+diffText(cloudState,state)+'\n按「確定」採用雲端(覆蓋本機)\n按「取消」以本機覆蓋雲端');
+      if(cw===lw&&cRev===lRev){useCloud=null;}       /* 完全一致,不動 */
+      else if(lw<=0&&cw>0){useCloud=true;}            /* 本機空、雲端有 → 用雲端 */
+      else if(cw<=0&&lw>0){useCloud=false;}           /* 雲端空、本機有 → 用本機 */
+      else if(cRev!==lRev){useCloud=cRev>lRev;}       /* 編輯次數多的贏(刪除也算一次編輯) */
+      else{                                            /* 編輯次數相同但內容不同 → 才問人 */
+        useCloud=confirm('雲端與本機資料不同(編輯序相同,需你判斷):\n\n【雲端 '+cw+'筆】最近三筆:\n'+recentThree(cloudState)+'\n\n【本機 '+lw+'筆】最近三筆:\n'+recentThree(state)+'\n\n按「確定」採用雲端\n按「取消」以本機覆蓋雲端');
       }
       if(useCloud===true){
         saveSnapshot();
@@ -1339,8 +1342,8 @@ async function initSync(){
         rerenderAll();
         if(document.getElementById('pane-backup').classList.contains('on'))updateBackupInfo();
       }else if(useCloud===false){
-        state.ts=Date.now();
-        await fbRef.set({json:JSON.stringify(state),ts:state.ts,by:clientId});
+        state.ts=Date.now();state.rev=(state.rev||0)+1;
+        await fbRef.set({json:JSON.stringify(state),ts:state.ts,rev:state.rev,by:clientId});
       }
     }else{
       state.ts=state.ts||Date.now();
@@ -1354,10 +1357,13 @@ async function initSync(){
       if(d.by===clientId)return;
       if((d.ts||0)<=(state.ts||0))return;
       const incoming=migrate(JSON.parse(d.json));
+      const iRev=incoming.rev||0,lRev=state.rev||0;
       const iw=dataWeight(incoming),lw=dataWeight(state);
-      if(iw+5<lw){
-        if(!confirm('另一台裝置傳來資料('+iw+'筆) vs 本機('+lw+'筆),差異:\n\n'+diffText(incoming,state)+'\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
-          {state.ts=Date.now();pushCloud();return;}
+      /* 只在「對方編輯次數不比本機新、卻要覆蓋掉明顯更多本機資料」時才質疑——
+         正常的刪除(對方rev較新)會被尊重,不再誤攔 */
+      if(iRev<=lRev && iw+5<lw){
+        if(!confirm('另一台裝置傳來較舊或較少的資料:\n\n【對方 '+iw+'筆 · 編輯序'+iRev+'】最近三筆:\n'+recentThree(incoming)+'\n\n【本機 '+lw+'筆 · 編輯序'+lRev+'】最近三筆:\n'+recentThree(state)+'\n\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
+          {state.ts=Date.now();state.rev=(state.rev||0)+1;pushCloud();return;}
       }
       saveSnapshot();
       state=incoming;
