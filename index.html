@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.2</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.3</p>
 </header>
 
 <div class="wrap">
@@ -1186,6 +1186,49 @@ async function restoreSnapshot(){
   rerenderAll();updateBackupInfo();
   toast('已還原上一版');
 }
+function allRecords(s){
+  const m={};
+  (s.stores||[]).forEach(x=>m['store:'+x.id]='警示店:'+x.name);
+  (s.visits||[]).forEach(x=>m['visit:'+x.id]='拜訪 '+(((s.stores||[]).find(y=>y.id===x.storeId)||{}).name||'')+' '+x.date);
+  (s.todos||[]).forEach(x=>m['todo:'+x.id]='待辦:'+x.text);
+  (s.samples||[]).forEach(x=>m['sample:'+x.id]='試用品:'+(x.channel?x.channel+'-':'')+x.store);
+  (s.notes||[]).forEach(x=>m['note:'+x.id]='隨手記:'+x.text);
+  (s.monthly||[]).forEach(x=>m['mv:'+x.id]='月拜:'+x.store);
+  return m;
+}
+function diffStates(cloud,local){
+  const C=allRecords(cloud),L=allRecords(local);
+  const onlyCloud=[],onlyLocal=[],changed=[];
+  Object.keys(C).forEach(k=>{
+    if(!(k in L))onlyCloud.push(C[k]);
+    else{
+      const cs=JSON.stringify(findRec(cloud,k)),ls=JSON.stringify(findRec(local,k));
+      if(cs!==ls)changed.push(C[k]);
+    }
+  });
+  Object.keys(L).forEach(k=>{if(!(k in C))onlyLocal.push(L[k]);});
+  return {onlyCloud,onlyLocal,changed};
+}
+function findRec(s,key){
+  const [type,id]=key.split(':');
+  const map={store:'stores',visit:'visits',todo:'todos',sample:'samples',note:'notes',mv:'monthly'};
+  return (s[map[type]]||[]).find(x=>x.id===id);
+}
+function diffText(cloud,local){
+  const d=diffStates(cloud,local);
+  let out='';
+  const cap=(arr,head)=>{
+    if(!arr.length)return'';
+    let t=head+'('+arr.length+'):\n';
+    arr.slice(0,4).forEach(x=>t+='  · '+x.slice(0,24)+'\n');
+    if(arr.length>4)t+='  ...還有'+(arr.length-4)+'筆\n';
+    return t;
+  };
+  out+=cap(d.onlyCloud,'▲ 只在雲端(本機無)');
+  out+=cap(d.onlyLocal,'▼ 只在本機(雲端無)');
+  out+=cap(d.changed,'✎ 兩邊內容不同');
+  return out||'(兩邊主要紀錄相同,差異可能在完成狀態或設定)';
+}
 function recentThree(s){
   const acts=[];
   (s.visits||[]).forEach(v=>acts.push({t:v.date,label:'拜訪 '+((s.stores||[]).find(x=>x.id===v.storeId)||{}).name+' 架上'+v.shelfCount+'盒'}));
@@ -1229,7 +1272,7 @@ async function initSync(){
       else if(cw<=0&&lw>0){useCloud=false;}
       else if(cw===lw){useCloud=(d.ts||0)>(state.ts||0);}
       else{
-        useCloud=confirm('雲端與這台裝置的資料不同:\n\n【雲端'+cw+'筆】最近三筆:\n'+recentThree(cloudState)+'\n\n【本機'+lw+'筆】最近三筆:\n'+recentThree(state)+'\n\n按「確定」採用雲端(覆蓋本機)\n按「取消」以本機覆蓋雲端');
+        useCloud=confirm('雲端 '+cw+' 筆 vs 本機 '+lw+' 筆,差異:\n\n'+diffText(cloudState,state)+'\n按「確定」採用雲端(覆蓋本機)\n按「取消」以本機覆蓋雲端');
       }
       if(useCloud===true){
         saveSnapshot();
@@ -1255,7 +1298,7 @@ async function initSync(){
       const incoming=migrate(JSON.parse(d.json));
       const iw=dataWeight(incoming),lw=dataWeight(state);
       if(iw+5<lw){
-        if(!confirm('另一台裝置傳來的資料明顯較少:\n\n【對方'+iw+'筆】最近三筆:\n'+recentThree(incoming)+'\n\n【本機'+lw+'筆】最近三筆:\n'+recentThree(state)+'\n\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
+        if(!confirm('另一台裝置傳來資料('+iw+'筆) vs 本機('+lw+'筆),差異:\n\n'+diffText(incoming,state)+'\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
           {state.ts=Date.now();pushCloud();return;}
       }
       saveSnapshot();
