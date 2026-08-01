@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.4</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.5</p>
 </header>
 
 <div class="wrap">
@@ -1213,6 +1213,30 @@ const FB_CFG={
 };
 let fbRef=null,syncOn=false;
 const clientId='c'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+function detectDevice(){
+  const ua=navigator.userAgent||'';
+  if(/iPhone/.test(ua))return 'iPhone';
+  if(/iPad/.test(ua))return 'iPad';
+  if(/Macintosh|Mac OS/.test(ua))return 'Mac';
+  if(/Android/.test(ua))return 'Android';
+  if(/Windows/.test(ua))return 'Windows';
+  return '裝置';
+}
+function deviceName(){
+  try{
+    let n=localStorage.getItem('gt-device-name');
+    if(!n){n=detectDevice();localStorage.setItem('gt-device-name',n);}
+    return n;
+  }catch(e){return detectDevice();}
+}
+function fmtWhen(ts){
+  if(!ts)return '時間不明';
+  const d=new Date(ts),now=new Date();
+  const sameDay=d.toDateString()===now.toDateString();
+  const hh=String(d.getHours()).padStart(2,'0'),mm=String(d.getMinutes()).padStart(2,'0');
+  if(sameDay)return '今天 '+hh+':'+mm;
+  return (d.getMonth()+1)+'/'+d.getDate()+' '+hh+':'+mm;
+}
 function syncStatus(t,ok){
   const el=document.getElementById('syncStatus');
   if(el){el.textContent=t;el.style.color=ok?'var(--ok)':'var(--sub)';el.style.fontWeight=ok?'700':'400';}
@@ -1308,8 +1332,8 @@ function dataWeight(s){
 async function pushCloud(){
   if(!fbRef)return;
   try{
-    await fbRef.set({json:JSON.stringify(state),ts:state.ts||Date.now(),rev:state.rev||0,by:clientId});
-    syncStatus('✓ 同步已連線(金鑰:'+getSyncKey().slice(0,6)+'...)',true);
+    await fbRef.set({json:JSON.stringify(state),ts:state.ts||Date.now(),rev:state.rev||0,by:clientId,dev:deviceName()});
+    syncStatus('✓ 已連線 · 本機為「'+deviceName()+'」',true);
   }catch(e){syncStatus('推送失敗,恢復連線後自動重試');}
 }
 async function initSync(){
@@ -1332,7 +1356,7 @@ async function initSync(){
       else if(cw<=0&&lw>0){useCloud=false;}           /* 雲端空、本機有 → 用本機 */
       else if(cRev!==lRev){useCloud=cRev>lRev;}       /* 編輯次數多的贏(刪除也算一次編輯) */
       else{                                            /* 編輯次數相同但內容不同 → 才問人 */
-        useCloud=confirm('雲端與本機資料不同(編輯序相同,需你判斷):\n\n【雲端 '+cw+'筆】最近三筆:\n'+recentThree(cloudState)+'\n\n【本機 '+lw+'筆】最近三筆:\n'+recentThree(state)+'\n\n按「確定」採用雲端\n按「取消」以本機覆蓋雲端');
+        useCloud=confirm('兩邊資料不同,需你判斷:\n\n【雲端·來自'+(d.dev||'其他裝置')+'·'+fmtWhen(d.ts)+'·'+cw+'筆】\n'+recentThree(cloudState)+'\n\n【本機·'+deviceName()+'·'+cw+'筆】\n'+recentThree(state)+'\n\n按「確定」採用雲端('+(d.dev||'其他裝置')+')\n按「取消」以本機('+deviceName()+')覆蓋雲端');
       }
       if(useCloud===true){
         saveSnapshot();
@@ -1343,14 +1367,14 @@ async function initSync(){
         if(document.getElementById('pane-backup').classList.contains('on'))updateBackupInfo();
       }else if(useCloud===false){
         state.ts=Date.now();state.rev=(state.rev||0)+1;
-        await fbRef.set({json:JSON.stringify(state),ts:state.ts,rev:state.rev,by:clientId});
+        await fbRef.set({json:JSON.stringify(state),ts:state.ts,rev:state.rev,by:clientId,dev:deviceName()});
       }
     }else{
       state.ts=state.ts||Date.now();
-      await fbRef.set({json:JSON.stringify(state),ts:state.ts,by:clientId});
+      await fbRef.set({json:JSON.stringify(state),ts:state.ts,rev:state.rev||0,by:clientId,dev:deviceName()});
     }
     syncOn=true;
-    syncStatus('✓ 同步已連線(金鑰:'+key.slice(0,6)+'...)',true);
+    syncStatus('✓ 已連線 · 本機為「'+deviceName()+'」',true);
     fbRef.onSnapshot(s=>{
       if(!s.exists||s.metadata.hasPendingWrites)return;
       const d=s.data();
@@ -1362,7 +1386,7 @@ async function initSync(){
       /* 只在「對方編輯次數不比本機新、卻要覆蓋掉明顯更多本機資料」時才質疑——
          正常的刪除(對方rev較新)會被尊重,不再誤攔 */
       if(iRev<=lRev && iw+5<lw){
-        if(!confirm('另一台裝置傳來較舊或較少的資料:\n\n【對方 '+iw+'筆 · 編輯序'+iRev+'】最近三筆:\n'+recentThree(incoming)+'\n\n【本機 '+lw+'筆 · 編輯序'+lRev+'】最近三筆:\n'+recentThree(state)+'\n\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
+        if(!confirm('「'+(d.dev||'其他裝置')+'」('+fmtWhen(d.ts)+')傳來較舊或較少的資料:\n\n【'+(d.dev||'對方')+' · '+iw+'筆】\n'+recentThree(incoming)+'\n\n【本機'+deviceName()+' · '+lw+'筆】\n'+recentThree(state)+'\n\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
           {state.ts=Date.now();state.rev=(state.rev||0)+1;pushCloud();return;}
       }
       saveSnapshot();
