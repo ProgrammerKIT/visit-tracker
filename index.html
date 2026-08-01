@@ -389,6 +389,7 @@ function migrate(s){
   if(!s.samples)s.samples=[];
   if(!s.monthly)s.monthly=[];
   if(!s.monthlyMonth)s.monthlyMonth='';
+  if(!s.monthlyHistory)s.monthlyHistory=[];
   s.monthly.forEach(m=>{if(!m.district)m.district='未分區';});
   if(s.focus===undefined)s.focus='';
   if(!s.monthlySeeded){
@@ -461,12 +462,7 @@ async function load(){
     state=migrate(SEED);
     try{await persist();}catch(err){console.error(err);}
   }
-  const cm=today().slice(0,7);
-  if(state.monthlyMonth!==cm){
-    state.monthly.forEach(m=>{m.done=false;m.doneDate='';});
-    state.monthlyMonth=cm;
-    await persist();
-  }
+  checkMonthlyReset();
   render();renderMonthly();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();renderFocus();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
@@ -855,6 +851,7 @@ async function importBackup(){
   if(!confirm('確定還原?備份內容:警示店'+c.s+'/拜訪'+c.v+'/隨手記'+c.n+'/待辦'+c.t+'\n目前資料將被完整覆蓋。'))return;
   saveSnapshot();
   state=data;
+  checkMonthlyReset();
   await persist();
   render();renderMonthly();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();renderFocus();
   document.getElementById('bk-in').value='';
@@ -862,6 +859,46 @@ async function importBackup(){
 }
 
 /* ---- 每月必訪 ---- */
+function checkMonthlyReset(){
+  if(!state.monthly)return false;
+  const cm=today().slice(0,7);
+  /* 補救:7月因bug卡住未正常封存,若歷史缺2026-07且目前停在7月,先補一筆再重置 */
+  if(state.monthlyMonth==='2026-07'&&cm!=='2026-07'){
+    if(!state.monthlyHistory)state.monthlyHistory=[];
+    if(!state.monthlyHistory.some(x=>x.month==='2026-07')){
+      const JULY=[
+        {store:'中山明水店',channel:'大樹',district:'中山區',date:'2026-07-21'},
+        {store:'中和四維店',channel:'大樹',district:'中和區',date:'2026-07-25'},
+        {store:'永和福和店',channel:'大樹',district:'永和區',date:'2026-07-26'},
+        {store:'中山龍江二',channel:'佑全',district:'中山區',date:'2026-07-21'},
+        {store:'淡水淡金',channel:'佑全',district:'淡水區',date:'2026-07-26'}
+      ];
+      state.monthlyHistory.push({month:'2026-07',total:21,done:5,
+        byChannel:{'大樹':{d:3,t:12},'佑全':{d:2,t:9}},visited:JULY});
+    }
+  }
+  if(!state.monthlyMonth){state.monthlyMonth=cm;return false;}
+  if(state.monthlyMonth===cm)return false;
+  /* 跨月:先把上月達成率封存成歷史,再清空 */
+  if(!state.monthlyHistory)state.monthlyHistory=[];
+  const prevMonth=state.monthlyMonth;
+  const done=state.monthly.filter(m=>m.done);
+  if(done.length||state.monthly.length){
+    const byCh={};
+    state.monthly.forEach(m=>{byCh[m.channel]=byCh[m.channel]||{d:0,t:0};byCh[m.channel].t++;if(m.done)byCh[m.channel].d++;});
+    state.monthlyHistory.push({
+      month:prevMonth,
+      total:state.monthly.length,
+      done:done.length,
+      byChannel:byCh,
+      visited:done.map(m=>({store:m.store,channel:m.channel,district:m.district,date:m.doneDate})).sort((a,b)=>(a.date||'').localeCompare(b.date||''))
+    });
+    if(state.monthlyHistory.length>24)state.monthlyHistory=state.monthlyHistory.slice(-24);
+  }
+  state.monthly.forEach(m=>{m.done=false;m.doneDate='';});
+  state.monthlyMonth=cm;
+  return true;
+}
 function renderMonthly(){
   const el=document.getElementById('monthlyList');
   if(!state.monthly.length){el.innerHTML='<div class="empty">尚無每月必訪門市。新增後,每月1日自動重置勾選,開始新一輪。</div>';return;}
@@ -884,6 +921,15 @@ function renderMonthly(){
   if(done.length){
     h2+='<div class="cat-label">✅ 當月已完成拜訪('+done.length+')</div>';
     done.forEach(m=>{h2+=monthlyRow(m,true);});
+  }
+  if(state.monthlyHistory&&state.monthlyHistory.length){
+    h2+='<div class="sec-label clk" onclick="flipMvHist()">📅 歷月達成紀錄('+state.monthlyHistory.length+') '+(showMvHist?'▾':'▸')+'</div>';
+    if(showMvHist){
+      [...state.monthlyHistory].reverse().forEach(hm=>{
+        h2+='<div class="note-item"><div class="n-meta">'+esc(hm.month)+' · 達成 '+hm.done+'/'+hm.total+'</div>'+
+          (hm.visited||[]).map(v=>esc((v.date||'').slice(5))+' '+esc(v.channel)+'-'+esc(v.store)).join('<br>')+'</div>';
+      });
+    }
   }
   el.innerHTML=h2;
 }
@@ -973,7 +1019,8 @@ async function deleteNote(id){
 }
 
 /* ---- 追蹤待辦 ---- */
-let showDoneTodos=false,showDoneSamples=false;
+let showDoneTodos=false,showDoneSamples=false,showMvHist=false;
+function flipMvHist(){showMvHist=!showMvHist;renderMonthly();}
 function flipDone(which){
   if(which==='todos'){showDoneTodos=!showDoneTodos;renderTodos();}
   else{showDoneSamples=!showDoneSamples;renderSamples();}
@@ -1094,6 +1141,11 @@ function buildReport(){
       list.filter(m=>!m.done).forEach(m=>{out+='- [未訪] '+m.district+' '+m.store+(m.reason?'('+m.reason+')':'')+'\n';});
       done2.forEach(m=>{out+='- [已訪 '+m.doneDate+'] '+m.district+' '+m.store+'\n';});
     });
+    out+='\n';
+  }
+  if(state.monthlyHistory&&state.monthlyHistory.length){
+    out+='【歷月月拜達成紀錄】\n';
+    state.monthlyHistory.forEach(hm=>{out+='- '+hm.month+':達成 '+hm.done+'/'+hm.total+'\n';});
     out+='\n';
   }
   const noteScope=state.notes.filter(n=>{
@@ -1277,6 +1329,7 @@ async function initSync(){
       if(useCloud===true){
         saveSnapshot();
         state=cloudState;
+        if(checkMonthlyReset())pushCloud();
         try{await store.set(JSON.stringify(state));}catch(e){}
         rerenderAll();
         if(document.getElementById('pane-backup').classList.contains('on'))updateBackupInfo();
@@ -1303,6 +1356,7 @@ async function initSync(){
       }
       saveSnapshot();
       state=incoming;
+      if(checkMonthlyReset())pushCloud();
       store.set(JSON.stringify(state)).catch(()=>{});
       rerenderAll();
     });
