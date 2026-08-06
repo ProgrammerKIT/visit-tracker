@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.5</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · 匯入 · v3.6</p>
 </header>
 
 <div class="wrap">
@@ -329,6 +329,13 @@
       <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">貼上先前的備份碼,將完整覆蓋目前所有資料。</p>
       <textarea id="bk-in" placeholder="貼上 GTBK1. 開頭的備份碼" style="width:100%;min-height:90px;font-size:11px;border:1px solid var(--line);padding:8px;font-family:monospace;"></textarea>
       <button class="btn danger" style="width:100%;margin-top:8px;" onclick="importBackup()">還原資料</button>
+    </div>
+    <div class="quickform">
+      <div class="sec-label" style="margin-top:0">匯入本月分析建議</div>
+      <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">貼上 Claude 月度分析產出的建議 JSON,批次新增警示店與待辦。<b>只新增,不覆蓋現有資料</b>;同名警示店會自動略過。</p>
+      <textarea id="imp-in" placeholder='貼上 {"stores":[...],"todos":[...]} 格式的建議' style="width:100%;min-height:110px;font-size:11px;border:1px solid var(--line);padding:8px;font-family:monospace;"></textarea>
+      <button class="btn primary" style="width:100%;margin-top:8px;" onclick="importSuggestions()">匯入建議</button>
+      <div id="imp-result" style="font-size:13px;color:var(--sub);margin-top:10px;display:none;"></div>
     </div>
     <div class="quickform">
       <div class="sec-label" style="margin-top:0">緊急回溯</div>
@@ -863,6 +870,79 @@ async function importBackup(){
   render();renderMonthly();renderNotes();renderTodos();renderSamples();updateBackupInfo();updateSummary();renderFocus();
   document.getElementById('bk-in').value='';
   toast('還原完成');
+}
+
+/* ---- 匯入本月分析建議(只新增,不覆蓋) ---- */
+async function importSuggestions(){
+  const raw=document.getElementById('imp-in').value.trim();
+  const box=document.getElementById('imp-result');
+  if(!raw){toast('請先貼上建議內容');return;}
+  let data;
+  try{data=JSON.parse(raw);}
+  catch(e){toast('JSON 格式解析失敗,請確認有完整複製');return;}
+  if(typeof data!=='object'||data===null||(!Array.isArray(data.stores)&&!Array.isArray(data.todos))){
+    toast('格式不正確:需包含 stores 或 todos 陣列');return;
+  }
+  const inStores=Array.isArray(data.stores)?data.stores:[];
+  const inTodos=Array.isArray(data.todos)?data.todos:[];
+  const existNames={};
+  state.stores.forEach(x=>{existNames[(x.name||'').trim()]=1;});
+  const existTodos={};
+  state.todos.forEach(x=>{existTodos[(x.text||'').trim()]=1;});
+  const addS=[],skipS=[],addT=[],skipT=[];
+  inStores.forEach(x=>{
+    const nm=(x.name||'').trim();
+    if(!nm)return;
+    if(existNames[nm]){skipS.push(nm);return;}
+    existNames[nm]=1;addS.push(x);
+  });
+  inTodos.forEach(x=>{
+    const tx=(typeof x==='string'?x:(x.text||'')).trim();
+    if(!tx)return;
+    if(existTodos[tx]){skipT.push(tx);return;}
+    existTodos[tx]=1;addT.push(typeof x==='string'?{text:tx}:x);
+  });
+  if(!addS.length&&!addT.length){
+    box.style.display='block';
+    box.innerHTML='沒有可新增的項目(全部已存在)。略過警示店 '+skipS.length+' 筆、待辦 '+skipT.length+' 筆。';
+    toast('無新項目');return;
+  }
+  if(!confirm('匯入前會先存快照。\n將新增:警示店 '+addS.length+' 筆、待辦 '+addT.length+' 筆\n略過(已存在):警示店 '+skipS.length+' 筆、待辦 '+skipT.length+' 筆\n\n確定匯入?'))return;
+  saveSnapshot();
+  const stamp=Date.now();
+  addS.forEach((x,i)=>{
+    let ch=(x.channel||'佑全').trim();
+    if(!state.channels.includes(ch))state.channels.push(ch);
+    const cps=Array.isArray(x.checkpoints)?x.checkpoints.map(c=>String(c).trim()).filter(Boolean):[];
+    state.stores.push({
+      id:'imp'+stamp+'_'+i,
+      name:(x.name||'').trim(),
+      channel:ch,
+      reason:(x.reason||'').trim(),
+      checkpoints:cps.length?cps:['(未設定檢查點)'],
+      createdAt:new Date().toISOString()
+    });
+  });
+  addT.forEach((x,i)=>{
+    state.todos.push({
+      id:'impt'+stamp+'_'+i,
+      text:(x.text||'').trim(),
+      created:today(),
+      cat:(x.cat==='Office'?'Office':'Client'),
+      due:(x.due||''),
+      done:false,doneDate:''
+    });
+  });
+  await persist();
+  fillSampleChannels();
+  render();renderTodos();updateSummary();updateBackupInfo();
+  document.getElementById('imp-in').value='';
+  box.style.display='block';
+  box.innerHTML='<b>匯入完成</b><br>新增警示店 '+addS.length+' 筆'+(addS.length?'('+addS.map(x=>esc(x.name)).join('、')+')':'')+
+    '<br>新增待辦 '+addT.length+' 筆'+
+    (skipS.length||skipT.length?'<br>略過已存在:警示店 '+skipS.length+' 筆、待辦 '+skipT.length+' 筆':'')+
+    '<br><span style="color:var(--sub)">如需回復,可用下方「還原上一版快照」。</span>';
+  toast('匯入完成');
 }
 
 /* ---- 每月必訪 ---- */
