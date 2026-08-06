@@ -1,4 +1,4 @@
-const CACHE = 'gt-visit-v1';
+const CACHE = 'gt-visit-v2';
 const ASSETS = ['./', './index.html', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
