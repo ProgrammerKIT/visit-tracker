@@ -63,6 +63,16 @@ table.tb td{padding:8px 11px;border-bottom:1px solid var(--ln);text-align:right}
 td.rk{color:#D68910;font-weight:800}
 td.nm{font-weight:600}
 td.gn{color:#2E7D3A;font-weight:800}
+.xl{margin:0 0 14px;font-size:14px}
+.xl a{color:#14417A;font-weight:700;text-decoration:none;border-bottom:2px solid #D68910;padding-bottom:2px}
+.xl a:hover{color:#D68910}
+.pl{background:#fff;border:1px solid var(--bd);border-radius:6px;margin:16px 0 8px;overflow:hidden}
+.pl summary{list-style:none;cursor:pointer;padding:14px 20px;font-size:16px;font-weight:800;color:var(--ti)}
+.pl summary::-webkit-details-marker{display:none}
+.pl summary:hover{background:#FAFCFE}
+.pl summary em{font-style:normal;font-size:13px;color:var(--mu);font-weight:500;margin-left:8px}
+.pl[open] summary{border-bottom:1px solid var(--ln);background:#FAFCFE}
+.plb{padding:16px 20px 20px}
 .hint{font-size:13.5px;color:var(--mu);margin:0 0 10px}
 .pd{border:1px solid var(--bd);border-left:5px solid var(--sc);border-radius:6px;margin:9px 0;background:#fff;overflow:hidden}
 .pd summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
@@ -95,6 +105,7 @@ footer{margin-top:34px;padding-top:18px;border-top:1px solid #DDE4EB;font-size:1
 </style></head><body><div class="wrap">
 
 <h1>佑全連鎖體系｜HAUD 每店獨立深查（資料至 2026-07）</h1>
+<p class="xl"><a href="rank.html">查看《視舒坦玻尿酸30單支》7月三榜排名 →</a></p>
 <p class="meta">2025-09 ~ 2026-07（11個月）｜現役26家（1202基隆麥金 2026-06歇業、1703中城 2025-12加入）｜基期＝25/09–11、前期＝26/02–04、近期＝26/05–07｜鎖定表 v1.2（9家人工裁定，2026-08-08）｜7月實績228 vs 目標230（99.1%）｜依主檔 v1.9／出圖 SOP v1.0b｜點門市名展開。</p>
 
 <h2>通路總覽</h2>
@@ -132,6 +143,19 @@ footer{margin-top:34px;padding-top:18px;border-top:1px solid #DDE4EB;font-size:1
 <div class="pb"><div class="pcs"><div class="pc"><span>恢復缺口</span><b>0.42</b><i>佔 7%</i></div><div class="pc"><span>Complete 缺口</span><b>0.00</b><i>佔 0%</i></div><div class="pc"><span>TN 池</span><b>23.33</b><i>佔 93%</i></div><div class="pc"><span>TN 倍數</span><b>1.89</b></div><div class="pc"><span>階段</span><b>D｜守成長</b></div></div><p class="wb"><b>93% 的分數來自 TN 池，恢復缺口只有 0.42——這是純轉單型的極端案例。</b>近期 12.3 已經逼近期間高峰 15（26-06），基期 8.0 到現在成長超過五成，本體能挖的空間幾乎沒有了。但 TN 池 23.33 是全通路第二大、倍數 1.89 素材紮實。<b>該去的理由：這家店的下一盒增量不會從自己身上長出來，只能從隔壁貨架搬過來。</b>談法跟前四家不同——不是救量、不是恢復，是純粹的品項升級對話。</p></div></details>
 <div class="note"><b>讀法提醒：</b>公式為 恢復缺口＋0.4×Complete缺口＋0.25×TN池，TN 項不分素材厚薄。<b>A1118 排名第 1 的 75% 來自恢復缺口而非 TN</b>（倍數僅 1.21），主軸應為收復基期；<b>A1106（0.72）、1316（0.85）</b> 倍數低於 1，其 TN 分數偏虛。倍數調整權重之裁定列於主檔交接必查點第 9 項，未裁定前沿用現行公式。</div>
 </section>
+
+<details class="pl"><summary>四大量池與計算定義<em>（點開查看公式與數值）</em></summary>
+<div class="plb">
+<table class="mt"><tbody>
+<tr><td class="ml">① 止血潛力<br><small>Σ max(0, 前期均−近期均)，僅 A 階段門市</small></td><td class="mv">3.33</td>
+<td class="ml">② 恢復缺口<br><small>Σ max(0, 期間高峰×0.85−近期均)，全部現役含 A</small></td><td class="mv">46.05</td></tr>
+<tr><td class="ml">③ 微量店 +1 盒<br><small>全期 HAUD 月均 &lt;3 盒者</small></td><td class="mv">7 家 / 7.0</td>
+<td class="ml">④-a Complete 順風池<br><small>Σ(Complete近3月均−HAUD近3月均)，B 條件成立門市</small></td><td class="mv">7.0</td></tr>
+<tr><td class="ml">④-b TN 轉單池<br><small>Σ(TN+TNF)近3月均，C 條件成立門市 14 家</small></td><td class="mv">153.0</td>
+<td class="ml">④-b 以 5% / 10% 假設轉換率<br><small>可實現增量估算（假設值，非承諾）</small></td><td class="mv">7.65 / 15.3</td></tr>
+</tbody></table>
+<div class="note">① 與 ② 對 A1312樹林博愛 <b>重疊計列 2.58 盒</b>，加總四池時勿重複計算。②<b>不得排除 A 階段門市</b>，若誤排除會少算 2.58 盒（43.47 vs 46.05），且全通路唯一止血對象將自恢復池消失。④-b 的 153.0 為<b>可轉單基數而非可實現增量</b>，不得直接當作目標。上期記錄之恢復缺口 45.8 已查明係遺漏 1320八里中山（0.25 盒），本期 46.05 自洽結案。</div>
+</div></details>
 
 <h2>每店獨立深查</h2>
 <h3 class="gh" style="--sc:#B93030"><b>A</b><span>｜</span>止跌救量 <em>（1 家）</em></h3><details class="sd" style="--sc:#B93030">
