@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.7</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.7.1</p>
 </header>
 
 <div class="wrap">
@@ -974,11 +974,15 @@ function renderMonthly(){
 }
 function monthlyRow(m,showDist){
   const cls=m.channel==='大樹'?'mv-tree':'mv-yc';
+  let sub='';
+  if(showDist){
+    sub='<div class="s-items">'+esc(m.district)+(m.doneDate?' · 已訪 '+esc(m.doneDate):'')+'</div>';
+  }else if(m.reason&&m.reason.trim()){
+    sub='<div class="s-items">'+esc(m.reason)+'</div>';
+  }
   return '<div class="todo-item '+cls+(m.done?' done':'')+'">'+
     '<input type="checkbox" '+(m.done?'checked':'')+' onchange="toggleMonthly(\''+m.id+'\')">'+
-    '<div class="t-text"><span class="mv-dot"></span>'+esc(m.store)+
-    (showDist?'<div class="s-items">'+esc(m.district)+(m.doneDate?' · 已訪 '+esc(m.doneDate):'')+'</div>':
-      (m.reason?'<div class="s-items">'+esc(m.reason)+'</div>':''))+'</div>'+
+    '<div class="t-text"><span class="mv-dot"></span>'+esc(m.store)+sub+'</div>'+
     '<button class="item-del" onclick="editMonthly(\''+m.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteMonthly(\''+m.id+'\')">刪除</button></div>';
 }
