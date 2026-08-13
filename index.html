@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.7.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.8</p>
 </header>
 
 <div class="wrap">
@@ -308,6 +308,7 @@
       <button class="btn primary" id="sp-savebtn" style="width:100%" onclick="saveSample()">加入配送清單</button>
       <button class="btn" id="sp-canceledit" style="width:100%;margin-top:8px;display:none;" onclick="resetSampleForm()">取消編輯</button>
     </div>
+    <input type="text" id="sp-search" placeholder="🔍 搜尋門市 / 通路 / 品項" oninput="renderSamples()" style="width:100%;border:1px solid var(--line);padding:10px;font-size:15px;font-family:inherit;margin-bottom:12px;-webkit-appearance:none;">
     <div id="sampleList"></div>
   </div>
 
@@ -726,10 +727,17 @@ function renderSamples(){
     '<div class="alert-banner">⚠ '+overdue.length+' 筆緊急🔴試用品已超過3天未送達:'+
     overdue.map(s=>(s.channel?s.channel+'-':'')+s.store).join('、')+'</div>':'';
   if(!state.samples.length){el.innerHTML='<div class="empty">目前沒有待送的試用品。</div>';return;}
-  const open=state.samples.filter(s=>!s.done).sort((a,b)=>(PR[a.priority].o-PR[b.priority].o)||a.created.localeCompare(b.created));
-  const done=state.samples.filter(s=>s.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
+  const kw=(document.getElementById('sp-search')?document.getElementById('sp-search').value.trim().toLowerCase():'');
+  const match=s=>{
+    if(!kw)return true;
+    const hay=((s.channel||'')+' '+(s.store||'')+' '+sampleItems(s)).toLowerCase();
+    return hay.includes(kw);
+  };
+  const open=state.samples.filter(s=>!s.done&&match(s)).sort((a,b)=>(PR[a.priority].o-PR[b.priority].o)||a.created.localeCompare(b.created));
+  const done=state.samples.filter(s=>s.done&&match(s)).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
   let h='';
-  if(open.length){h+='<div class="sec-label">待配送('+open.length+')</div>'+open.map(sampleRow).join('');}
+  if(kw&&!open.length&&!done.length){el.innerHTML='<div class="empty">找不到符合「'+esc(kw)+'」的試用品。</div>';return;}
+  if(open.length){h+='<div class="sec-label">待配送('+open.length+(kw?' · 篩選中':'')+')</div>'+open.map(sampleRow).join('');}
   if(done.length){
     h+='<div class="sec-label clk" onclick="flipDone(\'samples\')">已送達('+done.length+') '+(showDoneSamples?'▾':'▸')+'</div>';
     if(showDoneSamples)h+=done.map(sampleRow).join('');
