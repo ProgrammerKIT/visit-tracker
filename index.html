@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.6</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.7</p>
 </header>
 
 <div class="wrap">
@@ -498,7 +498,7 @@ async function persist(){
   for(let i=0;i<3;i++){
     try{
       const ok=await store.set(payload);
-      if(ok){if(fbRef)pushCloud();return true;}
+      if(ok){if(fbRef){pushCloud();markSyncState();}return true;}
     }catch(e){console.error('storage attempt '+(i+1),e);}
     await new Promise(res=>setTimeout(res,400*(i+1)));
   }
@@ -1361,12 +1361,40 @@ function dataWeight(s){
   return (s.visits||[]).length+(s.notes||[]).length+(s.todos||[]).length+(s.samples||[]).length+
     ((s.monthly||[]).filter(m=>m.done).length)+((s.stores||[]).length>1?(s.stores||[]).length:0)+(s.focus?1:0);
 }
-async function pushCloud(){
+let pushPending=false,pushTimer=null,lastPushedRev=-1;
+function markSyncState(){
   if(!fbRef)return;
+  if(pushPending||( (state.rev||0)!==lastPushedRev )){
+    syncStatus('⏳ 有'+((state.rev||0)!==lastPushedRev?'未同步':'待確認')+'變更 · 連線後自動上傳('+deviceName()+')',false);
+  }else{
+    syncStatus('✓ 已同步 · 本機為「'+deviceName()+'」',true);
+  }
+}
+async function pushCloud(){
+  if(!fbRef)return false;
+  const revAtSend=state.rev||0;
   try{
-    await fbRef.set({json:JSON.stringify(state),ts:state.ts||Date.now(),rev:state.rev||0,by:clientId,dev:deviceName()});
-    syncStatus('✓ 已連線 · 本機為「'+deviceName()+'」',true);
-  }catch(e){syncStatus('推送失敗,恢復連線後自動重試');}
+    await fbRef.set({json:JSON.stringify(state),ts:state.ts||Date.now(),rev:revAtSend,by:clientId,dev:deviceName()});
+    lastPushedRev=revAtSend;
+    pushPending=false;
+    if(pushTimer){clearTimeout(pushTimer);pushTimer=null;}
+    markSyncState();
+    return true;
+  }catch(e){
+    pushPending=true;
+    markSyncState();
+    scheduleRetry();
+    return false;
+  }
+}
+function scheduleRetry(){
+  if(pushTimer)return;
+  pushTimer=setTimeout(async()=>{
+    pushTimer=null;
+    if(!pushPending&&(state.rev||0)===lastPushedRev)return;
+    const ok=await pushCloud();
+    if(!ok)scheduleRetry();
+  },8000);
 }
 async function initSync(){
   const key=getSyncKey();
@@ -1393,6 +1421,7 @@ async function initSync(){
       if(useCloud===true){
         saveSnapshot();
         state=cloudState;
+        lastPushedRev=cloudState.rev||0;
         if(checkMonthlyReset())pushCloud();
         try{await store.set(JSON.stringify(state));}catch(e){}
         rerenderAll();
@@ -1400,36 +1429,50 @@ async function initSync(){
       }else if(useCloud===false){
         state.ts=Date.now();state.rev=(state.rev||0)+1;
         await fbRef.set({json:JSON.stringify(state),ts:state.ts,rev:state.rev,by:clientId,dev:deviceName()});
+        lastPushedRev=state.rev;
       }
     }else{
       state.ts=state.ts||Date.now();
       await fbRef.set({json:JSON.stringify(state),ts:state.ts,rev:state.rev||0,by:clientId,dev:deviceName()});
     }
+    lastPushedRev=state.rev||0;
     syncOn=true;
-    syncStatus('✓ 已連線 · 本機為「'+deviceName()+'」',true);
+    markSyncState();
     fbRef.onSnapshot(s=>{
       if(!s.exists||s.metadata.hasPendingWrites)return;
       const d=s.data();
-      if(d.by===clientId)return;
+      if(d.by===clientId){lastPushedRev=d.rev||0;pushPending=false;markSyncState();return;}
       if((d.ts||0)<=(state.ts||0))return;
       const incoming=migrate(JSON.parse(d.json));
       const iRev=incoming.rev||0,lRev=state.rev||0;
       const iw=dataWeight(incoming),lw=dataWeight(state);
-      /* 只在「對方編輯次數不比本機新、卻要覆蓋掉明顯更多本機資料」時才質疑——
-         正常的刪除(對方rev較新)會被尊重,不再誤攔 */
+      const haveUnsynced=(lRev!==lastPushedRev);
+      /* 本機有尚未上傳的變更時,任何遠端覆蓋都先問人,避免離線編輯被靜默吃掉 */
+      if(haveUnsynced){
+        if(!confirm('本機有尚未上傳的變更,雲端同時也有來自「'+(d.dev||'其他裝置')+'」('+fmtWhen(d.ts)+')的更新:\n\n【雲端 · '+iw+'筆】\n'+recentThree(incoming)+'\n\n【本機'+deviceName()+'(未上傳) · '+lw+'筆】\n'+recentThree(state)+'\n\n按「確定」採用雲端(本機未上傳的變更會遺失)\n按「取消」保留本機並覆蓋雲端')){
+          state.ts=Date.now();state.rev=(state.rev||0)+1;pushCloud();return;
+        }
+        saveSnapshot();state=incoming;lastPushedRev=incoming.rev||0;pushPending=false;
+        if(checkMonthlyReset())pushCloud();
+        store.set(JSON.stringify(state)).catch(()=>{});rerenderAll();markSyncState();return;
+      }
+      /* 只在「對方編輯次數不比本機新、卻要覆蓋掉明顯更多本機資料」時才質疑 */
       if(iRev<=lRev && iw+5<lw){
         if(!confirm('「'+(d.dev||'其他裝置')+'」('+fmtWhen(d.ts)+')傳來較舊或較少的資料:\n\n【'+(d.dev||'對方')+' · '+iw+'筆】\n'+recentThree(incoming)+'\n\n【本機'+deviceName()+' · '+lw+'筆】\n'+recentThree(state)+'\n\n按「確定」接受對方\n按「取消」保留本機並推回雲端'))
           {state.ts=Date.now();state.rev=(state.rev||0)+1;pushCloud();return;}
       }
       saveSnapshot();
       state=incoming;
+      lastPushedRev=incoming.rev||0;pushPending=false;
       if(checkMonthlyReset())pushCloud();
       store.set(JSON.stringify(state)).catch(()=>{});
-      rerenderAll();
+      rerenderAll();markSyncState();
     });
   }catch(e){console.error(e);syncStatus('同步連線失敗:'+(e.message||'').slice(0,60));}
 }
-window.addEventListener('online',()=>{if(fbRef)pushCloud();});
+window.addEventListener('online',()=>{
+  if(fbRef&&((state.rev||0)!==lastPushedRev||pushPending)){pushCloud();}
+});
 
 load().then(initSync);
 if('serviceWorker' in navigator){
