@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.0</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.0.1</p>
 </header>
 
 <div class="wrap">
@@ -1064,22 +1064,6 @@ function renderMonthly(){
   if(done.length){
     h2+='<div class="cat-label">✅ 當月已完成拜訪('+done.length+')</div>';
     done.forEach(m=>{h2+=monthlyRow(m,true);});
-  }
-  if(state.storeArchive&&state.storeArchive.length){
-    const arch=state.storeArchive.filter(a=>(a.visits||[]).some(v=>inRange(v.date)));
-    if(arch.length){
-      out+='【已移出警示店 · 歷史拜訪紀錄】\n';
-      arch.forEach(a=>{
-        out+='■ '+a.channel+'-'+a.name+'(移出於 '+a.removedAt+')\n';
-        (a.visits||[]).filter(v=>inRange(v.date)).forEach(v=>{
-          out+='- '+v.date+' 架上:'+(v.shelfCount===''?'未記':v.shelfCount)+' | '+(v.stockout==='yes'?'斷貨/低於安全量':'庫存正常');
-          if(v.feedback)out+=' | 藥師回饋:'+v.feedback;
-          if(v.note)out+=' | 備註:'+v.note;
-          out+='\n';
-        });
-      });
-      out+='\n';
-    }
   }
   if(state.monthlyHistory&&state.monthlyHistory.length){
     h2+='<div class="sec-label clk" onclick="flipMvHist()">📅 歷月達成紀錄('+state.monthlyHistory.length+') '+(showMvHist?'▾':'▸')+'</div>';
