@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.9</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.0</p>
 </header>
 
 <div class="wrap">
@@ -346,6 +346,10 @@
   <div class="modal">
     <h3>匯入警示店(分析結果)</h3>
     <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">貼上分析產出的 JSON。同名門市會更新其警示原因與檢查點,拜訪紀錄不受影響;新門市則新增。</p>
+    <div class="field"><label>匯入模式</label><select id="imp-mode">
+      <option value="append">追加／更新(不刪除既有門市)</option>
+      <option value="sync">同步汰換(移出同通路中未列入的門市)</option>
+    </select></div>
     <textarea id="imp-json" placeholder='{"stores":[{"name":"...","channel":"佑全","reason":"...","checkpoints":["..."]}]}' style="width:100%;min-height:180px;font-size:11px;border:1px solid var(--line);padding:10px;font-family:monospace;"></textarea>
     <div id="imp-preview" style="font-size:13px;margin-top:10px;"></div>
     <div class="row2">
@@ -414,6 +418,7 @@ function migrate(s){
   s.monthly.forEach(m=>{if(!m.district)m.district='未分區';});
   if(s.focus===undefined)s.focus='';
   if(s.rev===undefined)s.rev=0;
+  if(!s.storeArchive)s.storeArchive=[];
   if(!s.monthlySeeded){
     const SEEDMV=[
       ['大同區','大同雙連店','大樹'],
@@ -643,11 +648,40 @@ async function runImportStores(){
     const exist=state.stores.find(x=>x.name===nm);
     (exist?upd:add).push({src:s,name:nm,exist:exist});
   });
+  const mode=document.getElementById('imp-mode').value;
+  /* 同步汰換只作用於本次 JSON 出現過的通路,避免誤刪其他通路 */
+  const scope=[...new Set(list.filter(s=>s&&s.channel).map(s=>String(s.channel).trim()))];
+  const names=list.filter(s=>s&&s.name).map(s=>String(s.name).trim());
+  let rm=[];
+  if(mode==='sync'&&scope.length){
+    rm=state.stores.filter(x=>scope.includes(x.channel)&&!names.includes(x.name));
+  }
   const pv=document.getElementById('imp-preview');
   pv.innerHTML='<b>新增 '+add.length+' 家</b>'+(add.length?':'+add.map(x=>esc(x.name)).join('、'):'')+
     '<br><b>更新 '+upd.length+' 家</b>'+(upd.length?':'+upd.map(x=>esc(x.name)).join('、'):'')+
+    (rm.length?'<br><b style="color:var(--alert)">移出 '+rm.length+' 家</b>:'+rm.map(x=>esc(x.name)).join('、'):'')+
+    (mode==='sync'?'<br><span style="color:var(--sub)">同步範圍僅限通路:'+scope.map(esc).join('、')+'(其他通路不受影響)</span>':'')+
     (bad.length?'<br><span style="color:var(--alert)">略過 '+bad.length+' 筆(缺 name)</span>':'');
-  if(!confirm('確定匯入?\n新增 '+add.length+' 家、更新 '+upd.length+' 家'+(bad.length?'、略過 '+bad.length+' 筆':'')+'\n\n更新只會覆寫警示原因與檢查點,既有拜訪紀錄保留。'))return;
+  let msg='確定匯入?\n新增 '+add.length+' 家、更新 '+upd.length+' 家'+(bad.length?'、略過 '+bad.length+' 筆':'');
+  if(rm.length){
+    const rmVisits=state.visits.filter(v=>rm.some(x=>x.id===v.storeId)).length;
+    msg+='\n移出 '+rm.length+' 家:'+rm.map(x=>x.name).join('、')+
+      '\n(僅限通路 '+scope.join('、')+',其他通路不動)'+
+      '\n\n這 '+rm.length+' 家的 '+rmVisits+' 筆拜訪紀錄會封存保留,月底回報文字仍讀得到。';
+  }
+  msg+='\n\n更新只覆寫警示原因與檢查點,既有拜訪紀錄保留。';
+  if(!confirm(msg))return;
+  if(rm.length){
+    rm.forEach(x=>{
+      const vs=state.visits.filter(v=>v.storeId===x.id);
+      state.storeArchive.push({name:x.name,channel:x.channel,reason:x.reason||'',
+        removedAt:today(),visits:vs.map(v=>({date:v.date,shelfCount:v.shelfCount,stockout:v.stockout,feedback:v.feedback,note:v.note}))});
+    });
+    const rmIds=rm.map(x=>x.id);
+    state.stores=state.stores.filter(x=>!rmIds.includes(x.id));
+    state.visits=state.visits.filter(v=>!rmIds.includes(v.storeId));
+    if(state.storeArchive.length>200)state.storeArchive=state.storeArchive.slice(-200);
+  }
   const stamp=Date.now();
   add.forEach((x,i)=>{
     state.stores.push({
@@ -670,7 +704,7 @@ async function runImportStores(){
   fillSampleChannels();
   render();updateSummary();
   closeModal('importStoresModal');
-  toast('匯入完成:新增'+add.length+'、更新'+upd.length);
+  toast('匯入完成:新增'+add.length+'、更新'+upd.length+(rm.length?'、移出'+rm.length:''));
 }
 function openAddStore(){
   const sel=document.getElementById('ns-channel');
@@ -1031,6 +1065,22 @@ function renderMonthly(){
     h2+='<div class="cat-label">✅ 當月已完成拜訪('+done.length+')</div>';
     done.forEach(m=>{h2+=monthlyRow(m,true);});
   }
+  if(state.storeArchive&&state.storeArchive.length){
+    const arch=state.storeArchive.filter(a=>(a.visits||[]).some(v=>inRange(v.date)));
+    if(arch.length){
+      out+='【已移出警示店 · 歷史拜訪紀錄】\n';
+      arch.forEach(a=>{
+        out+='■ '+a.channel+'-'+a.name+'(移出於 '+a.removedAt+')\n';
+        (a.visits||[]).filter(v=>inRange(v.date)).forEach(v=>{
+          out+='- '+v.date+' 架上:'+(v.shelfCount===''?'未記':v.shelfCount)+' | '+(v.stockout==='yes'?'斷貨/低於安全量':'庫存正常');
+          if(v.feedback)out+=' | 藥師回饋:'+v.feedback;
+          if(v.note)out+=' | 備註:'+v.note;
+          out+='\n';
+        });
+      });
+      out+='\n';
+    }
+  }
   if(state.monthlyHistory&&state.monthlyHistory.length){
     h2+='<div class="sec-label clk" onclick="flipMvHist()">📅 歷月達成紀錄('+state.monthlyHistory.length+') '+(showMvHist?'▾':'▸')+'</div>';
     if(showMvHist){
@@ -1255,6 +1305,22 @@ function buildReport(){
       done2.forEach(m=>{out+='- [已訪 '+m.doneDate+'] '+m.district+' '+m.store+'\n';});
     });
     out+='\n';
+  }
+  if(state.storeArchive&&state.storeArchive.length){
+    const arch=state.storeArchive.filter(a=>(a.visits||[]).some(v=>inRange(v.date)));
+    if(arch.length){
+      out+='【已移出警示店 · 歷史拜訪紀錄】\n';
+      arch.forEach(a=>{
+        out+='■ '+a.channel+'-'+a.name+'(移出於 '+a.removedAt+')\n';
+        (a.visits||[]).filter(v=>inRange(v.date)).forEach(v=>{
+          out+='- '+v.date+' 架上:'+(v.shelfCount===''?'未記':v.shelfCount)+' | '+(v.stockout==='yes'?'斷貨/低於安全量':'庫存正常');
+          if(v.feedback)out+=' | 藥師回饋:'+v.feedback;
+          if(v.note)out+=' | 備註:'+v.note;
+          out+='\n';
+        });
+      });
+      out+='\n';
+    }
   }
   if(state.monthlyHistory&&state.monthlyHistory.length){
     out+='【歷月月拜達成紀錄】\n';
