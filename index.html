@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.8</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v3.9</p>
 </header>
 
 <div class="wrap">
@@ -242,6 +242,7 @@
     <div class="toolbar">
       <button class="btn primary" onclick="openAddStore()">＋ 新增警示店</button>
       <button class="btn" onclick="openReport()">產出回報文字</button>
+      <button class="btn" onclick="openImportStores()">匯入分析結果</button>
     </div>
     <div id="storeList"></div>
   </div>
@@ -341,6 +342,19 @@
 </div>
 
 <!-- 新增警示店 modal -->
+<div class="modal-bg" id="importStoresModal">
+  <div class="modal">
+    <h3>匯入警示店(分析結果)</h3>
+    <p style="font-size:13px;color:var(--sub);margin-bottom:10px;">貼上分析產出的 JSON。同名門市會更新其警示原因與檢查點,拜訪紀錄不受影響;新門市則新增。</p>
+    <textarea id="imp-json" placeholder='{"stores":[{"name":"...","channel":"佑全","reason":"...","checkpoints":["..."]}]}' style="width:100%;min-height:180px;font-size:11px;border:1px solid var(--line);padding:10px;font-family:monospace;"></textarea>
+    <div id="imp-preview" style="font-size:13px;margin-top:10px;"></div>
+    <div class="row2">
+      <button class="btn" onclick="closeModal('importStoresModal')">取消</button>
+      <button class="btn primary" onclick="runImportStores()">預覽並匯入</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="addStoreModal">
   <div class="modal">
     <h3>新增警示店</h3>
@@ -609,6 +623,54 @@ async function saveVisit(id){
   render();updateSummary();
   document.getElementById('st-'+id).classList.add('open');
   toast('已儲存');
+}
+function openImportStores(){
+  document.getElementById('imp-json').value='';
+  document.getElementById('imp-preview').innerHTML='';
+  document.getElementById('importStoresModal').classList.add('show');
+}
+async function runImportStores(){
+  const raw=document.getElementById('imp-json').value.trim();
+  if(!raw){toast('請先貼上 JSON');return;}
+  let data;
+  try{data=JSON.parse(raw);}catch(e){toast('JSON 格式錯誤,請確認有完整複製');return;}
+  const list=Array.isArray(data)?data:(data.stores||[]);
+  if(!Array.isArray(list)||!list.length){toast('找不到 stores 陣列');return;}
+  const add=[],upd=[],bad=[];
+  list.forEach(s=>{
+    if(!s||!s.name||!String(s.name).trim()){bad.push(s);return;}
+    const nm=String(s.name).trim();
+    const exist=state.stores.find(x=>x.name===nm);
+    (exist?upd:add).push({src:s,name:nm,exist:exist});
+  });
+  const pv=document.getElementById('imp-preview');
+  pv.innerHTML='<b>新增 '+add.length+' 家</b>'+(add.length?':'+add.map(x=>esc(x.name)).join('、'):'')+
+    '<br><b>更新 '+upd.length+' 家</b>'+(upd.length?':'+upd.map(x=>esc(x.name)).join('、'):'')+
+    (bad.length?'<br><span style="color:var(--alert)">略過 '+bad.length+' 筆(缺 name)</span>':'');
+  if(!confirm('確定匯入?\n新增 '+add.length+' 家、更新 '+upd.length+' 家'+(bad.length?'、略過 '+bad.length+' 筆':'')+'\n\n更新只會覆寫警示原因與檢查點,既有拜訪紀錄保留。'))return;
+  const stamp=Date.now();
+  add.forEach((x,i)=>{
+    state.stores.push({
+      id:'imp'+stamp+'_'+i,
+      name:x.name,
+      channel:(x.src.channel&&String(x.src.channel).trim())||'其他',
+      reason:x.src.reason||'',
+      checkpoints:(Array.isArray(x.src.checkpoints)&&x.src.checkpoints.length)?x.src.checkpoints.map(String):['(未設定檢查點)'],
+      createdAt:new Date().toISOString()
+    });
+    if(x.src.channel&&!state.channels.includes(String(x.src.channel).trim()))state.channels.push(String(x.src.channel).trim());
+  });
+  upd.forEach(x=>{
+    const t=x.exist;
+    if(x.src.channel)t.channel=String(x.src.channel).trim();
+    if(x.src.reason)t.reason=x.src.reason;
+    if(Array.isArray(x.src.checkpoints)&&x.src.checkpoints.length)t.checkpoints=x.src.checkpoints.map(String);
+  });
+  await persist();
+  fillSampleChannels();
+  render();updateSummary();
+  closeModal('importStoresModal');
+  toast('匯入完成:新增'+add.length+'、更新'+upd.length);
 }
 function openAddStore(){
   const sel=document.getElementById('ns-channel');
