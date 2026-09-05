@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.2</p>
 </header>
 
 <div class="wrap">
@@ -264,7 +264,8 @@
   <div class="pane" id="pane-notes">
     <div class="quickform">
       <div class="field"><label>想法 / 觀察 / 情報</label><textarea id="qn-text" placeholder="例:新莊店藥師說最近Complete帶動人工淚液詢問變多"></textarea></div>
-      <div class="field"><label>相關通路/門市(選填)</label><input type="text" id="qn-store" placeholder="例:大樹-新莊店 或 佑全,可留空"></div>
+      <div class="field"><label>相關通路(選填)</label><select id="qn-channel"></select></div>
+      <div class="field"><label>門市名稱(選填)</label><input type="text" id="qn-store" placeholder="例:大安羅斯福店"></div>
       <button class="btn primary" style="width:100%" onclick="saveNote()">存入隨手記</button>
     </div>
     <div id="noteList"></div>
@@ -490,7 +491,7 @@ async function load(){
     try{await persist();}catch(err){console.error(err);}
   }
   checkMonthlyReset();
-  render();renderMonthly();renderNotes();renderTodos();renderSamples();fillSampleChannels();updateSummary();renderFocus();
+  render();renderMonthly();renderNotes();renderTodos();renderSamples();fillSampleChannels();fillNoteChannels();updateSummary();renderFocus();
   document.getElementById('sp-otherchk').addEventListener('change',e=>{
     document.getElementById('sp-othertext').style.display=e.target.checked?'block':'none';
     document.getElementById('sp-other-q').style.display=e.target.checked?'inline-block':'none';
@@ -720,7 +721,7 @@ async function saveStore(){
   if(ch==='__new__'){
     ch=(prompt('輸入新通路名稱(例:佑全)')||'').trim();
     if(!ch){toast('未輸入通路,已取消');return;}
-    if(!state.channels.includes(ch))state.channels.push(ch);fillSampleChannels();
+    if(!state.channels.includes(ch))state.channels.push(ch);fillSampleChannels();fillNoteChannels();
   }
   const cps=document.getElementById('ns-cp').value.split('\n').map(x=>x.trim()).filter(Boolean);
   state.stores.push({
@@ -1139,14 +1140,25 @@ function renderNotes(){
     '<div class="n-meta">'+esc(n.date)+(n.store?' · <span class="n-store">'+esc(n.store)+'</span>':'')+'</div>'+
     esc(n.text)+'</div>').join('');
 }
+function fillNoteChannels(){
+  const sel=document.getElementById('qn-channel');
+  if(!sel)return;
+  const keep=sel.value;
+  sel.innerHTML='<option value="">未指定</option>'+
+    state.channels.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+  if(keep)sel.value=keep;
+}
 async function saveNote(){
   const text=document.getElementById('qn-text').value.trim();
   if(!text){toast('請輸入內容');return;}
-  state.notes.push({id:'n'+Date.now(),date:today(),text:text,
-    store:document.getElementById('qn-store').value.trim()});
+  const ch=document.getElementById('qn-channel').value;
+  const st=document.getElementById('qn-store').value.trim();
+  const label=ch&&st?(ch+'-'+st):(ch||st||'');
+  state.notes.push({id:'n'+Date.now(),date:today(),text:text,store:label});
   await persist();
   document.getElementById('qn-text').value='';
   document.getElementById('qn-store').value='';
+  document.getElementById('qn-channel').selectedIndex=0;
   renderNotes();toast('已存入');
 }
 async function editNote(id){
