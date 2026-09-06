@@ -171,6 +171,9 @@
     padding:1px 7px;margin-right:6px;cursor:pointer;display:inline-block;
   }
   .todo-item.done .t-cat{border-color:var(--sub);color:var(--sub);}
+  .t-star{cursor:pointer;margin-right:6px;font-size:14px;opacity:.45;}
+  .t-star.on{opacity:1;}
+  .todo-item.focus-on{border-left:4px solid #D97706;background:#FFFBF3;}
   .chkrow{display:flex;gap:14px;flex-wrap:wrap;}
   .itemrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
   .field input.qty{width:72px;flex:0 0 72px;border:1px solid var(--line);padding:9px;font-size:16px;font-family:inherit;text-align:center;}
@@ -223,7 +226,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.3</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.4</p>
 </header>
 
 <div class="wrap">
@@ -278,6 +281,7 @@
         <button id="cat-office" onclick="setCat('Office')">Office</button>
       </div></div>
       <div class="field"><label>追蹤事項</label><input type="text" id="qt-text" placeholder="例:7月底前確認宜安補貨到位"></div>
+      <div class="field"><label class="chk"><input type="checkbox" id="qt-focus"> 🌟 本月重點相關</label></div>
       <div class="field"><label>期限(選填)</label><input type="date" id="qt-due"></div>
       <button class="btn primary" style="width:100%" onclick="saveTodo()">加入待辦</button>
     </div>
@@ -777,8 +781,15 @@ function renderFocus(){
 async function editFocus(){
   const nt=prompt('本月重點方向(簡短幾個字):',state.focus||'');
   if(nt===null)return;
-  state.focus=nt.trim();
-  await persist();renderFocus();
+  const v=nt.trim(),changed=(v!==(state.focus||''));
+  state.focus=v;
+  /* 換月換重點時,舊的重點標記若留著會失真,主動問要不要清 */
+  const flagged=state.todos.filter(t=>t.focus&&!t.done);
+  if(changed&&flagged.length&&confirm('重點方向已更新。\n目前有 '+flagged.length+' 筆未完成待辦仍標著舊重點,要一併清除標記嗎?\n\n確定=清除,取消=保留')){
+    flagged.forEach(t=>{t.focus=false;});
+    renderTodos();
+  }
+  await persist();renderFocus();updateSummary();
 }
 function updateSummary(){
   const el=document.getElementById('summaryBar');
@@ -787,7 +798,9 @@ function updateSummary(){
   const overdue=state.todos.filter(t=>!t.done&&t.due&&t.due<today()).length;
   const dueToday=state.todos.filter(t=>!t.done&&t.due===today()).length;
   const mvT=state.monthly.length,mvD=state.monthly.filter(m=>m.done).length;
+  const fT=state.todos.filter(t=>t.focus),fOpen=fT.filter(t=>!t.done).length;
   el.innerHTML=
+    (fT.length?'<button class="chipbtn'+(fOpen?' warm':'')+'" onclick="switchTab(\'todos\')">🌟重點待辦 <b>'+fOpen+'/'+fT.length+'</b></button>':'')+
     (mvT?'<button class="chipbtn" onclick="switchTab(\'monthly\')">月拜 <b>'+mvD+'/'+mvT+'</b></button>':'')+
     (dueToday?'<button class="chipbtn warm" onclick="switchTab(\'todos\')">⏰今日到期 <b>'+dueToday+'</b></button>':'')+
     '<button class="chipbtn'+(needVisit?' hot':'')+'" onclick="switchTab(\'stores\')">待拜訪 <b>'+needVisit+'</b></button>'+
@@ -1210,7 +1223,8 @@ function renderTodos(){
   ['Office','Client'].forEach(cat=>{
     const list=state.todos.filter(t=>(t.cat||'Client')===cat);
     if(!list.length)return;
-    const open=list.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+    const open=list.filter(t=>!t.done).sort((a,b)=>
+      ((b.focus?1:0)-(a.focus?1:0))||((a.due||'9999').localeCompare(b.due||'9999')));
     const done=list.filter(t=>t.done).sort((a,b)=>(b.doneDate||'').localeCompare(a.doneDate||''));
     h+='<div class="cat-label">'+cat+'('+open.length+')</div>';
     if(open.length){h+='<div class="sec-label">進行中</div>'+open.map(t=>todoRow(t)).join('');}
@@ -1222,9 +1236,11 @@ function renderTodos(){
   el.innerHTML=h;
 }
 function todoRow(t){
-  return '<div class="todo-item'+(t.done?' done':'')+'">'+
+  return '<div class="todo-item'+(t.done?' done':'')+(t.focus&&!t.done?' focus-on':'')+'">'+
     '<input type="checkbox" '+(t.done?'checked':'')+' onchange="toggleTodo(\''+t.id+'\')">'+
-    '<div class="t-text"><span class="t-cat" onclick="swapCat(\''+t.id+'\')">'+esc(t.cat||'Client')+'</span>'+esc(t.text)+
+    '<div class="t-text"><span class="t-cat" onclick="swapCat(\''+t.id+'\')">'+esc(t.cat||'Client')+'</span>'+
+    '<span class="t-star'+(t.focus?' on':'')+'" onclick="swapFocus(\''+t.id+'\')" title="本月重點相關">'+(t.focus?'🌟':'☆')+'</span>'+
+    esc(t.text)+
     (t.due?'<div class="t-due'+(!t.done&&t.due<today()?' over':(!t.done&&t.due===today()?' tdy':''))+'">'+(!t.done&&t.due<today()?'已逾期 ':(!t.done&&t.due===today()?'⏰ 今日到期 ':'期限 '))+esc(t.due)+'</div>':'')+'</div>'+
     '<button class="item-del" onclick="editTodo(\''+t.id+'\')">修改</button>'+
     '<button class="item-del" onclick="deleteTodo(\''+t.id+'\')">刪除</button></div>';
@@ -1239,6 +1255,13 @@ async function editTodo(id){
   t.text=v;
   await persist();renderTodos();toast('已修改');
 }
+async function swapFocus(id){
+  const t=state.todos.find(x=>x.id===id);
+  if(!t)return;
+  t.focus=!t.focus;
+  await persist();renderTodos();updateSummary();
+  toast(t.focus?'已標為本月重點':'已取消重點標記');
+}
 async function swapCat(id){
   const t=state.todos.find(x=>x.id===id);
   if(!t)return;
@@ -1249,10 +1272,12 @@ async function saveTodo(){
   const text=document.getElementById('qt-text').value.trim();
   if(!text){toast('請輸入事項');return;}
   state.todos.push({id:'t'+Date.now(),text:text,created:today(),cat:pendingCat,
+    focus:document.getElementById('qt-focus').checked,
     due:document.getElementById('qt-due').value||'',done:false,doneDate:''});
   await persist();
   document.getElementById('qt-text').value='';
   document.getElementById('qt-due').value='';
+  document.getElementById('qt-focus').checked=false;
   renderTodos();updateSummary();toast('已加入');
 }
 async function toggleTodo(id){
@@ -1368,7 +1393,7 @@ function buildReport(){
       const o=openT.filter(t=>(t.cat||'Client')===cat),d=doneT.filter(t=>(t.cat||'Client')===cat);
       if(!o.length&&!d.length)return;
       out+='('+cat+')\n';
-      o.forEach(t=>{out+='- [未完成] '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
+      o.forEach(t=>{out+='- [未完成]'+(t.focus?'🌟':'')+' '+t.text+(t.due?' (期限'+t.due+')':'')+'\n';});
       d.forEach(t=>{out+='- [已完成 '+t.doneDate+'] '+t.text+'\n';});
     });
     out+='\n';
