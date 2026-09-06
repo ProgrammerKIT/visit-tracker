@@ -207,6 +207,12 @@
   .mv-yc .mv-dot{background:#E6A817;}
   .mv-legend{font-size:12.5px;color:var(--sub);margin-bottom:10px;}
   .mv-legend .mv-dot{width:9px;height:9px;}
+  .mv-wrap{margin-bottom:8px;}
+  .mv-wrap .todo-item{margin-bottom:0;}
+  .mv-note{border:1px solid var(--line);border-top:none;background:var(--panel);padding:12px;}
+  .mv-note textarea{width:100%;min-height:70px;border:1px solid var(--line);padding:10px;font-size:16px;font-family:inherit;}
+  .mv-hist{margin-top:10px;font-size:12.5px;color:var(--sub);line-height:1.7;}
+  .mv-cnt{font-size:12px;color:var(--alcon);font-weight:700;}
   .chk{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;}
   .chk input{width:20px;height:20px;accent-color:var(--alcon);}
   .seg button.sel-pr-red{background:var(--alert);color:#fff;font-weight:700;}
@@ -226,7 +232,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.5</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.6</p>
 </header>
 
 <div class="wrap">
@@ -1105,17 +1111,50 @@ function renderMonthly(){
 }
 function monthlyRow(m,showDist){
   const cls=m.channel==='大樹'?'mv-tree':'mv-yc';
+  const label=(m.channel?m.channel+'-':'')+m.store;
+  const cnt=state.notes.filter(n=>n.store===label).length;
   let sub='';
   if(showDist){
     sub='<div class="s-items">'+esc(m.district)+(m.doneDate?' · 已訪 '+esc(m.doneDate):'')+'</div>';
   }else if(m.reason&&m.reason.trim()){
     sub='<div class="s-items">'+esc(m.reason)+'</div>';
   }
-  return '<div class="todo-item '+cls+(m.done?' done':'')+'">'+
-    '<input type="checkbox" '+(m.done?'checked':'')+' onchange="toggleMonthly(\''+m.id+'\')">'+
-    '<div class="t-text"><span class="mv-dot"></span>'+esc(m.store)+sub+'</div>'+
-    '<button class="item-del" onclick="editMonthly(\''+m.id+'\')">修改</button>'+
-    '<button class="item-del" onclick="deleteMonthly(\''+m.id+'\')">刪除</button></div>';
+  return '<div class="mv-wrap">'+
+    '<div class="todo-item '+cls+(m.done?' done':'')+'">'+
+      '<input type="checkbox" '+(m.done?'checked':'')+' onchange="toggleMonthly(\''+m.id+'\')">'+
+      '<div class="t-text"><span class="mv-dot"></span>'+esc(m.store)+
+        (cnt?' <span class="mv-cnt">💬'+cnt+'</span>':'')+sub+'</div>'+
+      '<button class="item-del" onclick="flipMvNote(\''+m.id+'\')">記錄</button>'+
+      '<button class="item-del" onclick="editMonthly(\''+m.id+'\')">修改</button>'+
+      '<button class="item-del" onclick="deleteMonthly(\''+m.id+'\')">刪除</button>'+
+    '</div>'+
+    '<div class="mv-note" id="mvn-'+m.id+'" style="display:none">'+
+      '<textarea id="mvt-'+m.id+'" placeholder="現場觀察 / 藥師回饋(存檔後自動歸到隨手記,並標記本月已訪)"></textarea>'+
+      '<button class="btn primary" style="width:100%;margin-top:8px;" onclick="saveMonthlyNote(\''+m.id+'\')">儲存紀錄</button>'+
+      (cnt?'<div class="mv-hist">'+state.notes.filter(n=>n.store===label).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3).map(n=>'· '+esc(n.date)+' '+esc(n.text)).join('<br>')+'</div>':'')+
+    '</div></div>';
+}
+function flipMvNote(id){
+  const el=document.getElementById('mvn-'+id);
+  if(!el)return;
+  const open=el.style.display!=='none';
+  el.style.display=open?'none':'block';
+  if(!open){const t=document.getElementById('mvt-'+id);if(t)t.focus();}
+}
+async function saveMonthlyNote(id){
+  const m=state.monthly.find(x=>x.id===id);
+  if(!m)return;
+  const ta=document.getElementById('mvt-'+id);
+  const txt=ta?ta.value.trim():'';
+  if(!txt){toast('請輸入現場觀察內容');return;}
+  const label=(m.channel?m.channel+'-':'')+m.store;
+  state.notes.push({id:'n'+Date.now(),date:today(),text:txt,store:label});
+  /* 一個動作同時完成:記錄情報 + 標記本月已訪,減少行動阻力 */
+  let marked=false;
+  if(!m.done){m.done=true;m.doneDate=today();marked=true;}
+  await persist();
+  renderMonthly();renderNotes();updateSummary();
+  toast(marked?'已記錄並標記本月已訪':'已記錄');
 }
 async function saveMonthly(){
   const store2=document.getElementById('mv-store').value.trim();
