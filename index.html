@@ -223,7 +223,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.2.1</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.3</p>
 </header>
 
 <div class="wrap">
@@ -594,6 +594,7 @@ function storeCard(s){
         '</div></div>'+
         '<div class="field"><label>藥師回饋(6月為什麼賣得好?)</label><textarea id="f-'+s.id+'"></textarea></div>'+
         '<div class="field"><label>備註</label><textarea id="n-'+s.id+'"></textarea></div>'+
+        '<div class="field"><label class="chk"><input type="checkbox" id="sn-'+s.id+'" checked> 同時存為隨手記(藥師回饋/備註)</label></div>'+
         '<button class="btn primary" style="width:100%" onclick="saveVisit(\''+s.id+'\')">儲存本次拜訪</button>'+
         '<div class="row2">'+
           '<button class="btn small danger" onclick="removeStore(\''+s.id+'\')">移除此警示店</button>'+
@@ -617,18 +618,30 @@ async function saveVisit(id){
   const stockout=pendingStockout[id];
   if(!date){toast('請選拜訪日期');return;}
   if(!stockout){toast('請點選庫存狀態');return;}
+  const fb=document.getElementById('f-'+id).value.trim();
+  const nt=document.getElementById('n-'+id).value.trim();
   state.visits.push({
     id:'v'+Date.now(),storeId:id,date:date,
     shelfCount:shelf===''?'':Number(shelf),
     stockout:stockout,
-    feedback:document.getElementById('f-'+id).value.trim(),
-    note:document.getElementById('n-'+id).value.trim()
+    feedback:fb,
+    note:nt
   });
+  /* 改動1:現場質性情報同步進隨手記,避免最有價值的輸入因為要多切一個分頁而流失 */
+  let noteMade=false;
+  const syncEl=document.getElementById('sn-'+id);
+  if(syncEl&&syncEl.checked&&(fb||nt)){
+    const s=state.stores.find(x=>x.id===id);
+    const label=s?((s.channel?s.channel+'-':'')+s.name):'';
+    const body=[fb,nt].filter(Boolean).join(' / ');
+    state.notes.push({id:'n'+Date.now(),date:date,text:body,store:label});
+    noteMade=true;
+  }
   await persist();
   delete pendingStockout[id];
-  render();updateSummary();
+  render();renderNotes();updateSummary();
   document.getElementById('st-'+id).classList.add('open');
-  toast('已儲存');
+  toast(noteMade?'已儲存(並存入隨手記)':'已儲存');
 }
 function openImportStores(){
   document.getElementById('imp-json').value='';
