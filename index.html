@@ -226,7 +226,7 @@
 <body>
 <header>
   <h1>警示店拜訪追蹤</h1>
-  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.4</p>
+  <p>跨通路 · 警示店 · 隨手記 · 待辦 · 月拜 · 試用品 · 備份 · v4.5</p>
 </header>
 
 <div class="wrap">
@@ -1311,20 +1311,27 @@ function buildReport(){
   if(state.focus)out+='本月重點方向:'+state.focus+'\n';
   out+='\n';
   /* ① 隨手記置頂:現場質性情報是月度分析最關鍵的輸入,不可被埋在底部漏抄 */
-  const noteScope=state.notes.filter(n=>{
-    if(!inRange(n.date))return false;
+  /* 隨手記不套用一般時間範圍:它是待驗證的假設,價值在跨月比對(複盤SOP P5),
+     過期截斷會讓驗證時機到來前情報就消失。改為本期+歷史兩段,歷史上限180天。 */
+  const noteCh=n=>{
     if(pick==='__all__')return true;
     if(!n.store)return true; /* 未標記通路者一律附上,避免漏情報 */
     if(n.store.includes(pick))return true;
     return state.stores.some(s=>s.channel===pick&&n.store.includes(s.name));
-  });
+  };
+  const histCut=new Date(new Date(today())-180*86400000).toISOString().slice(0,10);
+  const noteAll=state.notes.filter(noteCh).sort((a,b)=>a.date.localeCompare(b.date));
+  const noteCur=noteAll.filter(n=>inRange(n.date));
+  const noteOld=range==='all'?[]:noteAll.filter(n=>!inRange(n.date)&&n.date>=histCut);
   out+='【隨手記 / 現場情報】'+(pick!=='__all__'?'('+tag+',含未標通路者)':'')+'\n';
-  if(noteScope.length){
-    [...noteScope].sort((a,b)=>a.date.localeCompare(b.date)).forEach(n=>{
-      out+='- '+n.date+(n.store?' ['+n.store+']':'')+' '+n.text+'\n';
-    });
+  if(noteCur.length){
+    noteCur.forEach(n=>{out+='- '+n.date+(n.store?' ['+n.store+']':'')+' '+n.text+'\n';});
   }else{
-    out+='(此範圍內無隨手記)\n';
+    out+='(本期無新增隨手記)\n';
+  }
+  if(noteOld.length){
+    out+='\n【歷史情報 · 待驗證】(較早記錄,供跨月驗證用)\n';
+    noteOld.forEach(n=>{out+='- '+n.date+(n.store?' ['+n.store+']':'')+' '+n.text+'\n';});
   }
   out+='\n';
   /* ② 警示店拜訪紀錄 */
