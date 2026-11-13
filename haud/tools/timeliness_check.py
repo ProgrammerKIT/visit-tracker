@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """到店檢查點時效把關（主檔 v2.24 歷史裁定第 16 條）
 
-用法：python3 timeliness_check.py <最新月YYYY-MM> <App匯入JSON> [index.html] [主檔.md]
+用法：python3 timeliness_check.py <最新月YYYY-MM> <App匯入JSON> [index.html] [期別帳本.md]
 有違規即列出並以 exit code 1 結束；產出流程遇 1 必須停止交付。
 
 規則：到店事項（JSON checkpoints、index.html「這次最該優先談的一件事」與優先序卡到店事項、
-主檔〈上期交接必查點〉）不得要求詢問或查核「最新月以前」的月份。
+期別帳本〈交接必查點〉）不得要求詢問或查核「最新月以前」的月份。
 最新月、往後月份（未來追蹤）與現況可用；reason 與背景說明不在掃描範圍。
 """
 import json, re, sys, html
@@ -60,7 +60,11 @@ def main():
                 hits += check_text('index 到店事項', l, latest_m)
     if len(sys.argv) > 4:
         md = open(sys.argv[4], encoding='utf-8').read()
-        sec = md.split('## 上期交接必查點', 1)[1].split('\n## ', 1)[0]
+        # v3.0 起交接必查點位於期別帳本「### 交接必查點」；相容舊主檔「## 上期交接必查點」
+        if '### 交接必查點' in md:
+            sec = md.split('### 交接必查點', 1)[1].split('\n### ', 1)[0]
+        else:
+            sec = md.split('## 上期交接必查點', 1)[1].split('\n## ', 1)[0]
         for l in sec.split('\n'):
             if re.match(r'^\d+\. ', l):
                 for part in re.split(r'[；;]', l):
