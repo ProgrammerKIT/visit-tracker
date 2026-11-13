@@ -22,3 +22,12 @@ python3 -c "from hauddata import *; import json; print(json.dumps(step0_report(l
 python3 gate.py --latest <YYYY-MM> --json <App檔> --index index.html --ledger 期別帳本.md --facts 事實表.md --rules 規則主檔.md --contract-version <現行> --haud-total <本期> --excel <本期Excel>
 python3 regress.py --build <本期Excel> <YYYY-MM>       # 第六步：本期裁定定案後建立期望值
 ```
+
+### gate.py 門市稱呼掃描（2026-11-13 補強）
+帶 `--facts` 時以名冊店碼為準，掃描期別帳本、事實表、規則主檔與 `--doc` 帶入之 SOP：店碼須置於中文名稱之後（`名稱（店碼）`）；「店碼在前」與獨立店碼皆列為失敗。略過：「」內原文、JSON `name` 欄範例、版本沿革與附錄原文。index.html、rank.html 與對話文字不在掃描範圍，須人工確認。
+
+```
+python3 gate.py --latest 2026-10 --json <App檔> --index index.html \
+  --ledger 佑全_期別帳本.md --facts 佑全_事實表.md --rules 規則主檔.md \
+  --doc 深查SOP.md --doc 三榜SOP.md --contract-version 2.1 --haud-total 198 --excel <Offtake.xlsx>
+```
